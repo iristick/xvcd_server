@@ -45,7 +45,9 @@ class xvcd_server(socketserver.BaseRequestHandler):
             try:
                 [cmd, length] = data.split(b':')
             except ValueError:
-                print('Invalid data received, closing connection')
+                print('Invalid data received, closing connection.')
+                print("Data: ")
+                print(data)
                 self.finish()
                 break
 
@@ -137,6 +139,13 @@ if(__name__ == '__main__'):
 
     if(opts.reset):
         jtag.reset()
+
+    #Print a helpful message indicating how to use the XVCD server.
+    print("Starting XVCD server. In the relevant tool, use the following cable plugin command:")
+    print("")
+    print(("    xilinx_xvc host=127.0.0.1:{0} disableversioncheck=true").format(opts.port))
+    print("")
+    print("You should be able to use the relevant tool normally.")
 
     server = socketserver.TCPServer(('localhost', opts.port), xvcd_server)
     server.serve_forever()
