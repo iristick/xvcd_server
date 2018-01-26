@@ -55,6 +55,15 @@ class FTDIAdapter(jtag):
         self.verbosity_level = level
 
 
+    def set_tck_period(self, period):
+        """
+            Handle the settck virtual cable command which requests a certain TCK period. Return the actual period.
+        """
+
+        ## Actual Period depends on many factors since this tries to simply go as fast as it can. So nothing to set. Respond that it goes at 100 Hz or 10e6 ns
+        return int(10e6)
+
+
     #def jtag_general(self, tms_stream, tdi_stream):
     def send_data(self, tms_stream, tdi_stream):
         """
@@ -111,8 +120,8 @@ class FTDIAdapter(jtag):
         if clock_delays:
             time.sleep(clock_delay);
 
-        print("{0}, {1}, {2}".format(1 if tdi else 0, 1 if tdo else 0, 1 if tms else 0))
-
+        if (self.verbosity_level >= 3):
+            print("{0}, {1}, {2}".format(1 if tdi else 0, 1 if tdo else 0, 1 if tms else 0))
 
         #Return the value of TDO.
         return tdo

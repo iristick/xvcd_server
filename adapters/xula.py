@@ -87,6 +87,14 @@ class jtag_xula(jtag):
     def set_verbosity(self, level):
         self.verbosity_level = level
 
+    def set_tck_period(self, period):
+        """
+            Handle the settck virtual cable command which requests a certain TCK period. Return the actual period.
+        """
+
+        ## Do not know the expected period of this method so simply return 1 MHz or 1000 ns
+        return int(1e3)
+
     def send_data(self, TMS_stream, TDI_stream):
         TDO_stream = BitStream()
 
