@@ -72,10 +72,7 @@ class xvcd_server(socketserver.BaseRequestHandler):
 
     
     def handle(self):
-        #@@@#global opts
-        #@@@#global has_client_connected
-        #@@@#global jtag
-      
+
         if(self.server.has_client_connected):
             if(self.server.opts.verbose >= 2):
                 print('Another client attempted to connect - REJECTING!')
@@ -317,15 +314,7 @@ if(__name__ == '__main__'):
     parser.add_argument('--verbose', '-v', action='count', default=0, help='Increase verbosity level')
     parser.add_argument('--local', '-l', action='store_true', help='Use to bind to local HOST typically when running on same computer as Xilinx tools')
 
-    #@@@#global opts
     opts = parser.parse_args()
-
-    #@@@#print("Verbose: {}".format(opts.verbose))
-    #@@@#sys.exit()
-    
-    # Single client for now, deny other requests
-    #@@@#global has_client_connected
-    #@@@#has_client_connected = False
 
     # Load JTAG adapter
     try:
