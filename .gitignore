@@ -49,3 +49,6 @@ coverage.xml
 # Sphinx documentation
 docs/_build/
 
+adapters/ft4232h.py~
+adapters/pyftdi.py~
+
