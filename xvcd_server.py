@@ -70,6 +70,63 @@ class xvcd_server(socketserver.BaseRequestHandler):
 
         return data
 
+    def byteVectToBitStreamOLD(self, byteVect, bitLen):
+        """ Take a byte array, byteVect, where bit 0 of the first byte, byte
+            0, is the lsb, or "first" bit. Create a BitStream() where the lsb is
+            the first, or left-most bit with index 0 for easy handling as a
+            BitStream(). Truncate the BitSTream so that it is bitLen long. """
+        
+        bs = bitstring.pack('bytes:{}'.format(len(byteVect)), byteVect)
+
+        # Fix LSB first
+        bs.byteswap()
+        bs.reverse()
+
+        # Return truncated BitStream
+        return bs[0:bitLen]
+
+    def byteVectToBitStream(self, byteVect, bitLen):
+        """ Take a byte array, byteVect, where bit 0 of the first byte, byte
+            0, is the lsb, or "first" bit. Create a BitStream() where the lsb is
+            the first, or left-most bit with index 0 for easy handling as a
+            BitStream(). Truncate the BitSTream so that it is bitLen long. """
+
+        # bit vectors are sent by shift: command with bit 0 of byte 0
+        # the first bit. Pad bits are therefore in the msbs of the
+        # last byte. Therefore, create BitStream() first, then byte
+        # swap before truncating.
+        
+        # Use BitStream() constructor directly for creating TMS
+        # and TDI BitStreams. Assuming that it is more efficient
+        # than previous method with bitstring.pack().
+        #
+        # Actually measured the time difference between
+        # byteVectToBitStreamOLD() and byteVectToBitStream() and found
+        # byteVectToBitStreamOLD() to take on average 6ms while
+        # byteVectToBitStream() took only 4ms. When processing two
+        # byte vectors in shift: command, this is a total savings of 4 ms
+        bs = bitstring.BitStream(bytes=byteVect, length=len(byteVect)*8) # length is a bit length
+
+        # Fix LSB first
+        #
+        # [@@@ Save time by dealing with bits in original order? Probably not since putting into the natural order of a BitStream()]
+        #@@@#for bn in range(0,len(byteVect)):
+        #@@@#    bs.reverse(start=bn*8,end=(bn*8)+8)
+        #@@@#b3 = bitstring.BitStream('')
+        #@@@#for bn in range(0,len(byteVect)):
+        #@@@#    a = bs[bn*8:(bn+1)*8]
+        #@@@#    a.reverse()
+        #@@@#    b3 += a
+        #@@@#return b3[0:bitLen]
+
+        ## Using built-in commands are way faster than looping in
+        ## Python. Like 100x faster in some case with large vectors.
+        bs.byteswap()
+        bs.reverse()
+
+        # Return truncated BitStream
+        return bs[0:bitLen]
+
     
     def handle(self):
 
@@ -238,21 +295,24 @@ class xvcd_server(socketserver.BaseRequestHandler):
             if (not vectArg):
                 print('Reading "shift:" TMS & TDI vector parameters failed - ABORTING!')
                 break ## An error occurred - simply abort here
+
+            startTime = time.time()
             
             # Split args in TMS data and TDI data
-            vectArg = [vectArg[0:numBytes], vectArg[numBytes:2*numBytes]]
+            #@@@#vectArg = [vectArg[0:numBytes], vectArg[numBytes:2*numBytes]]
+            #@@@#TMS = self.byteVectToBitStream(vectArg[0], numBits)
+            #@@@#TDI = self.byteVectToBitStream(vectArg[1], numBits)
 
-            TMS = bitstring.pack('bytes:{}'.format(numBytes), vectArg[0])
-            TDI = bitstring.pack('bytes:{}'.format(numBytes), vectArg[1])
+            # Split args in TMS data and TDI data, creating
+            # BitStream()s that have the first, lsb bit in index 0
+            # (ie. left-most)
+            TMS = self.byteVectToBitStream(vectArg[0:numBytes], numBits)
+            TDI = self.byteVectToBitStream(vectArg[numBytes:2*numBytes], numBits)
 
-            # Fix LSB first (@@@ Is this really necessary? Simply deal with bits backwards? Performance Hit to do this?)
-            TMS.byteswap()
-            TMS.reverse()
-            TDI.byteswap()
-            TDI.reverse()
+            stopTime  = time.time()
 
-            TMS = TMS[0:numBits]
-            TDI = TDI[0:numBits]
+            if(self.server.opts.verbose >= 2):
+                print('TMS/TDI conversion time: {}'.format(stopTime-startTime))
 
             if(self.server.opts.verbose >= 3):
                 print('TMS bitstream: {}'.format(TMS.bin))
@@ -348,7 +408,7 @@ if(__name__ == '__main__'):
         server = socketserver.TCPServer((HOST, opts.port), xvcd_server)
         server.has_client_connected = False     # Single client for now, deny other requests
         server.opts = opts     ## pass the command line options to the server
-        server.jtag = jtag     ## pass the server which adapter has been selected
+        server.jtag = jtag     ## pass to the server which adapter has been selected
         server.serve_forever()
 
     except KeyboardInterrupt:

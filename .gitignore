@@ -52,3 +52,5 @@ docs/_build/
 adapters/ft4232h.py~
 adapters/pyftdi.py~
 
+adapters/ft4232h_gpio.py~
+adapters/pyftdi_gpio.py~

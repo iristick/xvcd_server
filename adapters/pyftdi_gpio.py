@@ -14,29 +14,38 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #------------------------------------------------------------------------------
+#
+#------------------------------------------------------------------------------
+# The above copyright is for the ftdi.py code that this is based on. Changes
+# are Copyright 2018 S. Goadhouse <sgoadhouse@virginia.edu>
+#
+#------------------------------------------------------------------------------
 
 import bitstring
 from bitstring import BitStream
 from adapters.jtag import jtag
 
-from pylibftdi import BitBangDevice
-
+#@@@#from pylibftdi import BitBangDevice
 
 import usb
 import sys
 import struct
 import time
 
-class FTDIAdapter(jtag):
+from pyftdi.jtag import JtagEngine
+from pyftdi.bits import BitSequence
+
+class PyFTDIGPIOAdapter(jtag):
     """ 
-        A JTAG adapter for FTDI-based devices.
+        A JTAG adapter for FTDI-based devices based on the python PyFTDI library and using GPIO mode.
+        This primarily exists to compare against the original libftdi method which was GPIO only.
     """
 
     def __init__(self, device):
         """
             Create a new FTDI JTAG connection.
 
-            device -- The pylibfti BitBangDevice to connect to.
+            device -- The PyFTDI device to connect to.
         """
         
         #Initiatialize the core JTAG subsystem.
@@ -102,7 +111,7 @@ class FTDIAdapter(jtag):
         """
 
         #Apply a falling edge of the clock.
-        self.set_tck(0)
+        self.set_tck(False)
 
         #... and adjust our output values.
         self.set_tms(tms)
@@ -113,7 +122,7 @@ class FTDIAdapter(jtag):
             time.sleep(clock_delay);
 
         #Apply a rising edge, and sample the input.
-        self.set_tck(1);
+        self.set_tck(True);
         tdo = self.get_tdo()
 
         #If requested, wait.
@@ -141,25 +150,61 @@ class FTDIAdapter(jtag):
         pass
 
 
-    def _set_bit(self, bit_number, value=1):
+    #
+    # NOTE _set_gpio(), _get_gpio() and _commit_state() all come from
+    # the GPIO test code from the PyFTDI distribution. Its copyright
+    # statement follows:
+    #
+    # Copyright (c) 2016-2017, Emmanuel Blot <emmanuel.blot@free.fr>
+    # All rights reserved.
+    #
+    # Redistribution and use in source and binary forms, with or without
+    # modification, are permitted provided that the following conditions are met:
+    #     * Redistributions of source code must retain the above copyright
+    #       notice, this list of conditions and the following disclaimer.
+    #     * Redistributions in binary form must reproduce the above copyright
+    #       notice, this list of conditions and the following disclaimer in the
+    #       documentation and/or other materials provided with the distribution.
+    #     * Neither the name of the Neotion nor the names of its contributors may
+    #       be used to endorse or promote products derived from this software
+    #       without specific prior written permission.
+    #
+    # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+    # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+    # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+    # ARE DISCLAIMED. IN NO EVENT SHALL NEOTION BE LIABLE FOR ANY DIRECT, INDIRECT,
+    # INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    # LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+    # OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+    # LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+    # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+    # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+    
+    def _set_gpio(self, line, on):
+        """Set the level of a GPIO output pin.
+        
+        :param line: specify which GPIO to modify.
+        :param on: a boolean value, True for high-level, False for low-level
         """
-            Sets a single bit of the FTDI bit-bang port.
-
-            bit_number: The bit number of the port to set.
-            value: The value to set-- should be 0 or 1 (or equivalent truth values).
-        """
-        if value:
-            self.device.port |=  (1 << bit_number)
+        if on:
+            state = self._state | (1 << line)
         else:
-            self.device.port &= ~(1 << bit_number)
+            state = self._state & ~(1 << line)
+        self._commit_state(state)
 
+    def _get_gpio(self, line):
+        """Retrieve the level of a GPIO input pin
 
-    def _get_bit(self, bit_number):
+           :param line: specify which GPIO to read out.
+           :return: True for high-level, False for low-level
         """
-            Reads a given bit of the FTI bit-bang port.
+        value = self._gpio.read_port()
+        return bool(value & (1 << line))
 
-            bit_number: The bit number of the port to read.
+    def _commit_state(self, state):
+        """Update GPIO outputs
         """
-        return 1 if (self.device.port & (1 << bit_number)) else 0
-
+        self._gpio.write_port(state)
+        # do not update cache on error
+        self._state = state
 

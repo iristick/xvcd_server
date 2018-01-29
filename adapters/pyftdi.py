@@ -47,7 +47,7 @@ class PyFTDIAdapter(jtag):
         """
             Create a new FTDI JTAG connection.
 
-            device -- The pylibfti BitBangDevice to connect to.
+            device -- The PyFTDI device to connect to.
         """
         
         #Initiatialize the core JTAG subsystem.
@@ -80,7 +80,7 @@ class PyFTDIAdapter(jtag):
         """
             Performs a general-purpose JTAG communication.
 
-            tms_stream -- The values to be transmitted over the Test Most Select (TMS) line.
+            tms_stream -- The values to be transmitted over the Test Mode Select (TMS) line.
             tdi_stream -- The values to be transmitted to the target device.
         """
         
