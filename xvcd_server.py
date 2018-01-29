@@ -332,7 +332,21 @@ class xvcd_server(socketserver.BaseRequestHandler):
             stopTime  = time.time()
 
             if(self.server.opts.verbose >= 2):
-                print('send_data() time: {}'.format(stopTime-startTime))
+                sendTime = stopTime-startTime
+                bps =  numBits/sendTime
+
+                ## Now store in a running list so can compute a running average
+                if 'bpsList' in vars():
+                    bpsList.append(bps)
+                    # Only keep the last ten bps
+                    if len(bpsList) > 10:
+                        bpsList.pop(0) # remove the oldest one
+                else:
+                    # Create the list since it doe snot yet exist
+                    bpsList = [bps]
+
+                #@@@#print('>>>> bpsList: ', bpsList)
+                print('>>> send_data() time: {:.2f} - bps: {:.0f} - Avg. bps: {:.0f} <<<'.format(sendTime, bps, sum(bpsList)/len(bpsList)))
 
             if(self.server.opts.verbose >= 3):
                 print('TDO bitstream: {}'.format(TDO.bin))
