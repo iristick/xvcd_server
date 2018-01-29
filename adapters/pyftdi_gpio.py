@@ -25,15 +25,11 @@ import bitstring
 from bitstring import BitStream
 from adapters.jtag import jtag
 
-#@@@#from pylibftdi import BitBangDevice
-
 import usb
 import sys
 import struct
 import time
 
-from pyftdi.jtag import JtagEngine
-from pyftdi.bits import BitSequence
 
 class PyFTDIGPIOAdapter(jtag):
     """ 
@@ -80,7 +76,7 @@ class PyFTDIGPIOAdapter(jtag):
         """
             Performs a general-purpose JTAG communication.
 
-            tms_stream -- The values to be transmitted over the Test Most Select (TMS) line.
+            tms_stream -- The values to be transmitted over the Test Mode Select (TMS) line.
             tdi_stream -- The values to be transmitted to the target device.
         """
         

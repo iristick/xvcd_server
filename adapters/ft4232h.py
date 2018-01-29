@@ -16,20 +16,21 @@
 #------------------------------------------------------------------------------
 
 #@@@#import usb
-import bitstring
+import logging
+from os import environ
+import atexit
+
 from bitstring      import BitStream
 from adapters.jtag  import jtag
 from adapters.pyftdi  import PyFTDIAdapter
 
-import logging
-from os import environ
 from pyftdi.jtag import JtagEngine
-from pyftdi.bits import BitSequence
+#@@@#from pyftdi.bits import BitSequence
 
 
 class FT4232H(PyFTDIAdapter):
     """ 
-        A JTAG adapter using a FTDI FT4232H-based interface.
+        A JTAG adapter using a FTDI FT4232H-based interface in MPSSE mode.
     """
 
     #VID/PID constants.
@@ -55,14 +56,25 @@ class FT4232H(PyFTDIAdapter):
                              the first available bitbangable FTDI. Use caution with this one!
         """
 
-        device = JtagEngine(trst=False, frequency=DEFAULT_FREQ)
-        url = environ.get('FTDI_DEVICE', FTDI_URL)
-        device.configure(url)
+        self._jtag = JtagEngine(trst=False, frequency=DEFAULT_FREQ)
+		
+        # If FTDI_DEVICE environment variable, use it instead of self.FTDI_URL
+        url = environ.get('FTDI_DEVICE', self.FTDI_URL)
+		
+        # Open the PyFTDI URL configured for MPSSE JTAG
+        self._jtag.configure(url)
         #@@@#device.reset()
-
+		
+        atexit.register(self.cleanup)
+        
         #Initiatialize the core JTAG subsystem.
-        super().__init__(device)
+        super().__init__(self._jtag)
 
+
+    def cleanup(self):
+        print("Running PyFTDI JTAG cleanup...")
+        self._jtag.close()
+        
 
     def set_tck_period(self, period):
         """
@@ -72,7 +84,7 @@ class FT4232H(PyFTDIAdapter):
         #@@@# Modify to actually change frequency using PyFTDI functions.
         
         ## Actual Period depends on many factors since this tries to simply go as fast as it can. So nothing to set. Respond that it goes at 100 Hz or 10e6 ns
-        return int(1e9//DEFAULT_FREQ)
+        return int(1e9//self.DEFAULT_FREQ)
         
 
 # General name of class for server

@@ -25,9 +25,6 @@ import bitstring
 from bitstring import BitStream
 from adapters.jtag import jtag
 
-#@@@#from pylibftdi import BitBangDevice
-
-
 import usb
 import sys
 import struct
@@ -36,7 +33,7 @@ import time
 import logging
 #@@@#from os import environ
 from pyftdi.jtag import JtagEngine
-from pyftdi.bits import BitSequence
+#@@@#from pyftdi.bits import BitSequence
 
 class PyFTDIAdapter(jtag):
     """ 
@@ -87,6 +84,19 @@ class PyFTDIAdapter(jtag):
         #Create a new bitstream object to store the result of the transmission.
         tdo_stream = BitStream()
 
+        # Although the PyFTDI MPSSE mode is expected to be a
+        # significant performance improvement over GPIO mode, it does
+        # have an unfortunate complexity with how the TMS signal is
+        # handled.
+        #
+        # The shift: VCD command sends a TMS bit vector and a TDI bit
+        # vector of the same size so that each bit of TMS corresponds
+        # to each bit of TDI. However, TMS is only needed which
+        # changing the JTAG TAP state machine. So the MPSSE registers
+        # only accept up to 7 consecutive settings of TMS with a
+        # single TDI bit output.
+        
+        
         #For each simulatenous pair of bits in the transmission...
         for (tms, tdi) in zip(tms_stream, tdi_stream):
 

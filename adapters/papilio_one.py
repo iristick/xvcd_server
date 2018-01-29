@@ -31,7 +31,6 @@ from adapters.pyftdi_gpio  import PyFTDIGPIOAdapter
 
 from pyftdi.gpio import GpioController, GpioException
 
-# package.py
 
 class PapilioOne(PyFTDIGPIOAdapter):
     """ 
