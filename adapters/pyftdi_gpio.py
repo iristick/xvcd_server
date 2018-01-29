@@ -112,12 +112,12 @@ class PyFTDIGPIOAdapter(jtag):
             tdi: The value of TDI.
         """
 
-        #Apply a falling edge of the clock.
-        self.set_tck(False)
+        # Apply a falling edge of the clock
+        self.set_tck(False, commit=False) # wait to commit all output changes together
 
-        #... and adjust our output values.
-        self.set_tms(tms)
-        self.set_tdi(tdi)
+        # ... and adjust our output values.
+        self.set_tms(tms, commit=False) # wait to commit all output changes together)
+        self.set_tdi(tdi, commit=True)  # Now commit all three output changes simulataneously
 
         #If requested, wait.
         if clock_delays:
@@ -151,9 +151,9 @@ class PyFTDIGPIOAdapter(jtag):
         """
         pass
 
-    def _set_bit(self, line, on):
+    def _set_bit(self, line, on, commit=True):
         """ Convenience function so papilio_one.py had to change minimimally """
-        self._set_gpio(line, on)
+        self._set_gpio(line, on, commit)
     
 
     def _get_bit(self, line):
@@ -162,8 +162,9 @@ class PyFTDIGPIOAdapter(jtag):
 
     #
     # NOTE _set_gpio(), _get_gpio() and _commit_state() all come from
-    # the GPIO test code from the PyFTDI distribution. Its copyright
-    # statement follows:
+    # the GPIO test code from the PyFTDI distribution. Modified
+    # slightly so that _commit_state is optionally called. Original
+    # copyright statement follows:    
     #
     # Copyright (c) 2016-2017, Emmanuel Blot <emmanuel.blot@free.fr>
     # All rights reserved.
@@ -190,7 +191,7 @@ class PyFTDIGPIOAdapter(jtag):
     # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
     # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     
-    def _set_gpio(self, line, on):
+    def _set_gpio(self, line, on, commit=True):
         """Set the level of a GPIO output pin.
         
         :param line: specify which GPIO to modify.
@@ -200,7 +201,11 @@ class PyFTDIGPIOAdapter(jtag):
             state = self._state | (1 << line)
         else:
             state = self._state & ~(1 << line)
-        self._commit_state(state)
+
+        if commit:
+            self._commit_state(state)
+        else:
+            self._state = state
 
     def _get_gpio(self, line):
         """Retrieve the level of a GPIO input pin

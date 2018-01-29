@@ -98,25 +98,25 @@ class PapilioOne(PyFTDIGPIOAdapter):
         direction &= ~(1 << self.TDO_PORT);
         return direction
     
-    def set_tms(self, value):
+    def set_tms(self, value, commit=True):
         """
             Specifies the value of the TMS port. Used by the parent class.
         """
-        self._set_bit(self.TMS_PORT, value);
+        self._set_bit(self.TMS_PORT, value, commit);
 
 
-    def set_tdi(self, value):
+    def set_tdi(self, value, commit=True):
         """
             Specifies the value of the TDI port. Used by the parent class.
         """
-        self._set_bit(self.TDI_PORT, value);
+        self._set_bit(self.TDI_PORT, value, commit);
 
 
-    def set_tck(self, value):
+    def set_tck(self, value, commit=True):
         """
             Specifies the value of the TCK port. Used by the parent class.
         """
-        self._set_bit(self.TCK_PORT, value);
+        self._set_bit(self.TCK_PORT, value, commit);
 
 
     def get_tdo(self):
