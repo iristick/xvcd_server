@@ -19,12 +19,13 @@
 import bitstring
 from bitstring      import BitStream
 from adapters.jtag  import jtag
-from adapters.pyftdi  import PyFTDIAdapter
+from adapters.pyftdi_gpio  import PyFTDIGPIOAdapter
 
 import logging
 from os import environ
 #@@@#from pyftdi.jtag import JtagEngine
-from pyftdi.bits import BitSequence
+#@@@#from pyftdi.bits import BitSequence
+from pyftdi.gpio import GpioController, GpioException
 
 # package.py
 import atexit
@@ -58,10 +59,13 @@ class FT4232H_GPIO(PyFTDIGPIOAdapter):
                              the first available bitbangable FTDI. Use caution with this one!
         """
 
-        out_pins = self.TCK_PORT | self.TDI_PORT | self.TMS_PORT # set up outputs
+        # set up outputs (1=Output, 0=Input)
+        out_pins = (1 << self.TCK_PORT) 
+        out_pins |= (1 << self.TDI_PORT) 
+        out_pins |= (1 << self.TMS_PORT) 
         
         self._gpio = GpioController()
-        url = environ.get('FTDI_DEVICE', FTDI_URL)
+        url = environ.get('FTDI_DEVICE', self.FTDI_URL)
         self._gpio.open_from_url(url, direction=out_pins)
 
         atexit.register(self.cleanup)
@@ -83,7 +87,7 @@ class FT4232H_GPIO(PyFTDIGPIOAdapter):
         #@@@# Modify to actually change frequency using PyFTDI functions.
         
         ## Actual Period depends on many factors since this tries to simply go as fast as it can. So nothing to set. Respond that it goes at 100 Hz or 10e6 ns
-        return int(1e9//DEFAULT_FREQ)
+        return int(1e9//self.DEFAULT_FREQ)
         
 
     def set_tms(self, value):
