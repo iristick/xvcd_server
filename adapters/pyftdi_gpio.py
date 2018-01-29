@@ -54,6 +54,8 @@ class PyFTDIGPIOAdapter(jtag):
         #... and store the newly created device.
         self.device = device
 
+        self._state = 0  # SW cache of the GPIO output lines
+        
         #Create a copy of the instruction register for this device.
         #self.ir = bitstring.BitStream('0b000000')
 
@@ -149,6 +151,14 @@ class PyFTDIGPIOAdapter(jtag):
         """
         pass
 
+    def _set_bit(self, line, on):
+        """ Convenience function so papilio_one.py had to change minimimally """
+        self._set_gpio(line, on)
+    
+
+    def _get_bit(self, line):
+        """ Convenience function so papilio_one.py had to change minimimally """
+        return self._get_gpio(line)
 
     #
     # NOTE _set_gpio(), _get_gpio() and _commit_state() all come from
