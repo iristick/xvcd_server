@@ -43,7 +43,7 @@ class FT4232H(PyFTDIAdapter):
     #@@@#TDO_PORT = 2
     #@@@#TMS_PORT = 3
 
-    MAX_FREQ = 1e6
+    MAX_FREQ = 6.0e6
     FTDI_URL = 'ftdi://ftdi:4232h/1'
 
     def __init__(self):

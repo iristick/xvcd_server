@@ -86,7 +86,16 @@ class PyFTDIAdapter(jtag):
 
         return int(1e9/self.set_frequency(1e9/period))
 
-    #def jtag_general(self, tms_stream, tdi_stream):
+    @property
+    def max_byte_sizes(self):
+        """Return the (TX, RX) tuple of maximum bytes to (write, read)
+
+           :return: 2-tuple of write, read FIFO sizes in bytes
+           :rtype: tuple(int, int)
+        """
+        return self.device.max_byte_sizes
+
+    
     def send_data(self, tms_stream, tdi_stream):
         """
             Performs a general-purpose JTAG communication.

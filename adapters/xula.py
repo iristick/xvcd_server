@@ -95,6 +95,17 @@ class jtag_xula(jtag):
         ## Do not know the expected period of this method so simply return 1 MHz or 1000 ns
         return int(1e3)
 
+    @property
+    def max_byte_sizes(self):
+        """Return the (TX, RX) tuple of maximum bytes to (write, read)
+
+           :return: 2-tuple of write, read FIFO sizes in bytes
+           :rtype: tuple(int, int)
+        """
+
+        # This is limited by Python which is almost unlimited (I think), so set it to reasonable values
+        return (2048, 2048)
+
     def send_data(self, TMS_stream, TDI_stream):
         TDO_stream = BitStream()
 

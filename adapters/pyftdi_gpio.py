@@ -70,6 +70,16 @@ class PyFTDIGPIOAdapter(jtag):
         ## Actual Period depends on many factors since this tries to simply go as fast as it can. So nothing to set. Respond that it goes at 100 Hz or 10e6 ns
         return int(10e6)
 
+    @property
+    def max_byte_sizes(self):
+        """Return the (TX, RX) tuple of maximum bytes to (write, read)
+
+           :return: 2-tuple of write, read FIFO sizes in bytes
+           :rtype: tuple(int, int)
+        """
+
+        # This is limited by Python which is almost unlimited, so set it to reasonable values
+        return (2048, 2048)
 
     #def jtag_general(self, tms_stream, tdi_stream):
     def send_data(self, tms_stream, tdi_stream):

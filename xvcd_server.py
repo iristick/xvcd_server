@@ -26,9 +26,7 @@ from math import ceil
 import argparse
 import importlib
 
-BIT_SHIFT_MAX = 2048            # FTDI MPSSE can do 65536*8, but 2048 seems to be what everyone responds with
 XVC_VERSION = 1.0
-XVC_INFO = "xvcServer_v{:.1f}:{}\n".format(XVC_VERSION, BIT_SHIFT_MAX) 
 
 class xvcd_server(socketserver.BaseRequestHandler):
 
@@ -167,6 +165,7 @@ class xvcd_server(socketserver.BaseRequestHandler):
                     data = self.sread(6)
 
                     if (data == b'tinfo:'):
+                        XVC_INFO = "xvcServer_v{:.1f}:{}\n".format(XVC_VERSION, min(self.server.jtag.max_byte_sizes)) 
                         if(self.server.opts.verbose >= 1):
                             print('CMD=getinfo - Response: {}'.format(XVC_INFO))
                             self.request.sendall(XVC_INFO.encode())

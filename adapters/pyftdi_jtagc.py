@@ -50,9 +50,6 @@ import time
 from array import array
 from pyftdi.ftdi import Ftdi
 
-#@@@# Will go away once the port is complete
-from pyftdi.bits import BitSequence
-
 from bitstring import BitStream, BitArray
 
 class JtagError(Exception):
@@ -67,12 +64,10 @@ class JtagController:
     TMS_BIT = 0x08   # FTDI output
     TRST_BIT = 0x10  # FTDI output, not available on 2232 JTAG debugger
     JTAG_MASK = 0x1f
-    FTDI_WRITE_PIPE_LEN = 512    # byte length of FTDI USB Write (TX) PIPE/FIFO
-    FTDI_READ_PIPE_LEN = 512     # byte length of FTDI USB Read (RX) PIPE/FIFO
 
-    ## The FTDI MPSSE can take up to 65536 bytes, but let's use the
-    ## FTDI PIPE Len if it is less
-    MAX_WRITE_BYTES = min(FTDI_WRITE_PIPE_LEN,65536)
+    FTDI_WRITE_PIPE_LEN = 0    # byte length of FTDI USB Write (TX) PIPE/FIFO
+    FTDI_READ_PIPE_LEN =  0    # byte length of FTDI USB Read (RX) PIPE/FIFO
+    MAX_WRITE_BYTES = 0
     
     RW_BITS_PVE_NVE_MSB = 0x33  # MPSSE command not defined in PyFTDI
     RW_BITS_NVE_PVE_MSB = 0x36  # MPSSE command not defined in PyFTDI
@@ -110,7 +105,10 @@ class JtagController:
 
         # Read the FIFO sizes and save them
         (self.FTDI_WRITE_PIPE_LEN, self.FTDI_READ_PIPE_LEN) = self._ftdi.fifo_sizes
-        self.MAX_WRITE_BYTES = min(self.FTDI_WRITE_PIPE_LEN,65536) # update MAX_WRITE_BYTES
+
+        ## The FTDI MPSSE can take up to 65536 bytes, but let's use the
+        ## FTDI PIPE Len if it is less
+        self.MAX_WRITE_BYTES = min(self.FTDI_WRITE_PIPE_LEN,65536)
         
 
     def close(self):
@@ -127,34 +125,19 @@ class JtagController:
 
         return self._ftdi.set_frequency(self._frequency)
 
+    @property
+    def max_byte_sizes(self):
+        """Return the (TX, RX) tuple of maximum bytes to (write, read)
+
+           :return: 2-tuple of write, read FIFO sizes in bytes
+           :rtype: tuple(int, int)
+        """
+        return (self.FTDI_WRITE_PIPE_LEN, self.FTDI_READ_PIPE_LEN)
+
     def purge(self):
         self._ftdi.purge_buffers()
 
-    def reset(self, sync=False):
-        """Reset the attached TAP controller.
-           sync sends the command immediately (no caching)
-        """
-        # we can either send a TRST HW signal or perform 5 cycles with TMS=1
-        # to move the remote TAP controller back to 'test_logic_reset' state
-        # do both for now
-        if not self._ftdi:
-            raise JtagError("FTDI controller terminated")
-        if self._trst:
-            # nTRST
-            value = 0
-            cmd = array('B', (Ftdi.SET_BITS_LOW, value, self.direction))
-            self._ftdi.write_data(cmd)
-            time.sleep(0.1)
-            # nTRST should be left to the high state
-            value = JtagController.TRST_BIT
-            cmd = array('B', (Ftdi.SET_BITS_LOW, value, self.direction))
-            self._ftdi.write_data(cmd)
-            time.sleep(0.1)
-        # TAP reset (even with HW reset, could be removed though)
-        self.write_tms(BitSequence('11111'))
-        if sync:
-            self.sync()
-
+    ## Write out the data and clear the internal buffer for more data
     def sync(self):
         if not self._ftdi:
             raise JtagError("FTDI controller terminated")
@@ -165,24 +148,6 @@ class JtagController:
             except usb.core.USBError:
                 pass            # FTDI should be catching the error
 
-
-    def write_tms(self, tms):
-        """Change the TAP controller state"""
-        if not isinstance(tms, BitSequence):
-            raise JtagError('Expect a BitSequence')
-        length = len(tms)
-        if not (0 < length < 8):
-            raise JtagError('Invalid TMS length')
-        out = BitSequence(tms, length=8)
-        # apply the last TDO bit
-        if self._last is not None:
-            out[7] = self._last
-        # print("TMS", tms, (self._last is not None) and 'w/ Last' or '')
-        # reset last bit
-        self._last = None
-        cmd = array('B', (Ftdi.WRITE_BITS_TMS_NVE, length-1, out.tobyte()))
-        self._stack_cmd(cmd)
-        self.sync()
 
     def write_tms_tdi_read_tdo(self, tms, tdi):
         """Write out TMS bits while holding TDI constant and reading back in TDO"""
@@ -200,7 +165,7 @@ class JtagController:
         elif isinstance(tdi, bool):
             tms[0] = tdi            
         else:
-            raise JtagError('Incorrect type for tdi - must bit BitStream, BitArray or bool')
+            raise JtagError('Incorrect type for tdi - must be BitStream, BitArray or bool')
         
         # apply the last TDI bit
         #@@@if self._last is not None:
@@ -208,29 +173,21 @@ class JtagController:
         # print("TMS", tms, (self._last is not None) and 'w/ Last' or '')
         # reset last bit
         #@@@self._last = None
+
+        ## Send the byte to the FTDI
         cmd = array('B', (Ftdi.RW_BITS_TMS_PVE_NVE, length-1, tms.uint))
         self._stack_cmd(cmd)
         self.sync()
+
+        ## Read the response from FTDI
         data = self._ftdi.read_data_bytes(1, 4)
         if (len(data) != 1):
             raise JtagError('Not all data read! Expected {} bytes but only read {} bytes'.format(1,len(data)))
+
         tdo = BitStream(data)
-        tdo.reverse()
+        tdo.reverse()      # return to bitstring bit ordering with left-most bit the lsb
         tdo = tdo[:length] # only pass back the same number of bits as clocked out
         return tdo
-
-    def read(self, length):
-        """Read out a sequence of bits from TDO"""
-        byte_count = length//8
-        bit_count = length-8*byte_count
-        bs = BitSequence()
-        if byte_count:
-            bytes_ = self._read_bytes(byte_count)
-            bs.append(bytes_)
-        if bit_count:
-            bits = self._read_bits(bit_count)
-            bs.append(bits)
-        return bs
 
     def write_tdi_read_tdo(self, out, use_last=False):
         """ Output a sequence of bits to TDI while reading the TDO input bits """
@@ -257,60 +214,9 @@ class JtagController:
 
         return tdo
 
-    def shift_register(self, out, use_last=False):
-        """Shift a BitSequence into the current register and retrieve the
-           register output"""
-        if not isinstance(out, BitSequence):
-            return JtagError('Expect a BitSequence')
-        length = len(out)
-        if use_last:
-            (out, self._last) = (out[:-1], int(out[-1]))
-        byte_count = len(out)//8
-        pos = 8*byte_count
-        bit_count = len(out)-pos
-        if not byte_count and not bit_count:
-            raise JtagError("Nothing to shift")
-        if byte_count:
-            blen = byte_count-1
-            # print("RW OUT %s" % out[:pos])
-            cmd = array('B',
-                        (Ftdi.RW_BYTES_PVE_NVE_LSB, blen, (blen >> 8) & 0xff))
-            cmd.extend(out[:pos].tobytes(msby=True))
-            self._stack_cmd(cmd)
-            # print("push %d bytes" % byte_count)
-        if bit_count:
-            # print("RW OUT %s" % out[pos:])
-            cmd = array('B', (Ftdi.RW_BITS_PVE_NVE_LSB, bit_count-1))
-            cmd.append(out[pos:].tobyte())
-            self._stack_cmd(cmd)
-            # print("push %d bits" % bit_count)
-        self.sync()
-        bs = BitSequence()
-        byte_count = length//8
-        pos = 8*byte_count
-        bit_count = length-pos
-        if byte_count:
-            data = self._ftdi.read_data_bytes(byte_count, 4)
-            if not data:
-                raise JtagError('Unable to read data from FTDI')
-            byteseq = BitSequence(bytes_=data, length=8*byte_count)
-            # print("RW IN %s" % byteseq)
-            bs.append(byteseq)
-            # print("pop %d bytes" % byte_count)
-        if bit_count:
-            data = self._ftdi.read_data_bytes(1, 4)
-            if not data:
-                raise JtagError('Unable to read data from FTDI')
-            byte = data[0]
-            # need to shift bits as they are shifted in from the MSB in FTDI
-            byte >>= 8-bit_count
-            bitseq = BitSequence(byte, length=bit_count)
-            bs.append(bitseq)
-            # print("pop %d bits" % bit_count)
-        if len(bs) != length:
-            raise ValueError("Internal error")
-        return bs
-
+    # Concatenate cmd bytes. If cmd > Write FIFO size, write data and
+    # clear cmd array so more bytes can be added (which will need to
+    # be sent with a sync() outside of this function)
     def _stack_cmd(self, cmd):
         if not isinstance(cmd, array):
             raise TypeError('Expect a byte array')
@@ -320,20 +226,6 @@ class JtagController:
         if (len(self._write_buff)+len(cmd)+1) >= self.FTDI_WRITE_PIPE_LEN:
             self.sync()
         self._write_buff.extend(cmd)
-
-    def _read_bits(self, length):
-        """Read out bits from TDO"""
-        if length > 8:
-            raise JtagError("Cannot fit into FTDI fifo")
-        cmd = array('B', (Ftdi.READ_BITS_NVE_LSB, length-1))
-        self._stack_cmd(cmd)
-        self.sync()
-        data = self._ftdi.read_data_bytes(1, 4)
-        # need to shift bits as they are shifted in from the MSB in FTDI
-        byte = data[0] >> 8-length
-        bs = BitSequence(byte, length=length)
-        # print("READ BITS %s" % bs)
-        return bs
 
     def _write_read_bits(self, out):
         """Output bits on TDI while reading TDO bits in"""
@@ -365,28 +257,6 @@ class JtagController:
         tdo = tdo[:length] # only pass back the same number of bits as clocked out
         return tdo
 
-    def _write_bits(self, out):
-        """Output bits on TDI"""
-        length = len(out)
-        byte = out.tobyte()
-        # print("WRITE BITS %s" % out)
-        cmd = array('B', (Ftdi.WRITE_BITS_NVE_LSB, length-1, byte))
-        self._stack_cmd(cmd)
-
-    def _read_bytes(self, length):
-        """Read out bytes from TDO"""
-        if length > self.FTDI_READ_PIPE_LEN:
-            raise JtagError("Cannot fit into FTDI fifo")
-        alen = length-1
-        cmd = array('B', (Ftdi.READ_BYTES_NVE_LSB, alen & 0xff,
-                          (alen >> 8) & 0xff))
-        self._stack_cmd(cmd)
-        self.sync()
-        data = self._ftdi.read_data_bytes(length, 4)
-        bs = BitSequence(bytes_=data, length=8*length)
-        # print("READ BYTES %s" % bs)
-        return bs
-
     def _write_read_bytes(self, out):
         """Output bytes on TDI while reading TDO bits in"""
 
@@ -398,12 +268,17 @@ class JtagController:
 
         # Check number of bits.
         #
-        if olen > self.FTDI_READ_PIPE_LEN:
-            raise JtagError("Cannot fit read data of {} bytes into FTDI fifo".format(olen))
+        # If this function was a write-only function, could smartly
+        # handle writing more bytes than willl fit into the write FIFO
+        # by sending them in waves. However, this function writes and
+        # reads the same number of bytes. So the byte length of the
+        # out vector must be less than the size of both the Write and
+        # Read FIFO.
         #
-        # NOTE: the PyFTDI Ftdi class does not define this maximum so we do instead. 
-        if (olen > self.MAX_WRITE_BYTES):
-            raise JtagError('Too many bits: {}'.format(olen*8))
+        if olen > self.FTDI_READ_PIPE_LEN:
+            raise JtagError("Byte length of data ({}) cannot fit in FTDI read fifo with max of {} bytes".format(olen, self.FTDI_READ_PIPE_LEN))
+        if olen > self.FTDI_WRITE_PIPE_LEN:
+            raise JtagError("Byte length of data ({}) cannot fit in FTDI write fifo with max of {} bytes".format(olen, self.FTDI_WRITE_PIPE_LEN))
 
         # The byte length to pass to the MPSSE is -1 the actual length, LSB first
         cmd = array('B', (Ftdi.RW_BYTES_PVE_NVE_MSB, (olen-1) & 0xff,
@@ -418,21 +293,4 @@ class JtagController:
 
         return BitStream(data)
 
-    def _write_bytes(self, out):
-        """Output bytes on TDI"""
-        bytes_ = out.tobytes(msby=True)  # don't ask...
-        olen = len(bytes_)-1
-        # print("WRITE BYTES %s" % out)
-        cmd = array('B', (Ftdi.WRITE_BYTES_NVE_LSB, olen & 0xff,
-                          (olen >> 8) & 0xff))
-        cmd.extend(bytes_)
-        self._stack_cmd(cmd)
-
-    def _write_bytes_raw(self, out):
-        """Output bytes on TDI"""
-        olen = len(out)-1
-        cmd = array('B', (Ftdi.WRITE_BYTES_NVE_LSB, olen & 0xff,
-                          (olen >> 8) & 0xff))
-        cmd.extend(out)
-        self._stack_cmd(cmd)
 
