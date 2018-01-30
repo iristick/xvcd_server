@@ -25,15 +25,16 @@ import bitstring
 from bitstring import BitStream
 from adapters.jtag import jtag
 
-import usb
-import sys
-import struct
-import time
+#@@@#import usb
+#@@@#import sys
+#@@@#import struct
+#@@@#import time
 
 import logging
 #@@@#from os import environ
-from pyftdi.jtag import JtagController, JtagError
+#@@@#from pyftdi.jtag import JtagController, JtagError
 #@@@#from pyftdi.bits import BitSequence
+from adapters.pyftdi_jtagc import JtagController, JtagError
 
 class PyFTDIAdapter(jtag):
     """ 
