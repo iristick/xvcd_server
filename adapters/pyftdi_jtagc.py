@@ -53,7 +53,7 @@ from pyftdi.ftdi import Ftdi
 #@@@# Will go away once the port is complete
 from pyftdi.bits import BitSequence
 
-from bitstring import BitStream
+from bitstring import BitStream, BitArray
 
 class JtagError(Exception):
     """Generic JTAG error"""
@@ -164,15 +164,23 @@ class JtagController:
         if not (0 < length < 8):
             raise JtagError('Invalid TMS length')
         tms.reverse()           # must reverse bits since only lsb write seems to be supported
-        tms.prepend(8-len(tms)) # prepend 0's to be 7 bits long
-        tms = tdi[0] + tms      # left-most bit will be for TDI, so shift over and prepend the tdi bit
+        tms.prepend(8-len(tms)) # prepend 0's to be 8 bits long
+
+        # left-most bit will be for TDI
+        if isinstance(tdi, BitStream) or isinstance(tdi, BitArray):
+            tms[0] = tdi[0]
+        elif isinstance(tdi, bool):
+            tms[0] = tdi            
+        else:
+            raise JtagError('Incorrect type for tdi - must bit BitStream, BitArray or bool')
+        
         # apply the last TDI bit
         #@@@if self._last is not None:
         #@@@    out[7] = self._last
         # print("TMS", tms, (self._last is not None) and 'w/ Last' or '')
         # reset last bit
         #@@@self._last = None
-        cmd = array('B', (Ftdi.RW_BITS_TMS_PVE_NVE, length-1, tms.bytes))
+        cmd = array('B', (Ftdi.RW_BITS_TMS_PVE_NVE, length-1, tms.int))
         self._stack_cmd(cmd)
         self.sync()
         data = self._ftdi.read_data_bytes(1, 4)
@@ -312,7 +320,7 @@ class JtagController:
             raise JtagError('Wrong number of bits: {}'.format(length))
 
         # length of 0 for 1 bit, length of 7 for 8 bits, etc.
-        cmd = array('B', (self.RW_BITS_PVE_NVE_MSB, length-1, byte))
+        cmd = array('B', (self.RW_BITS_PVE_NVE_MSB, length-1, byte.int))
 
         self._stack_cmd(cmd)
         self.sync()

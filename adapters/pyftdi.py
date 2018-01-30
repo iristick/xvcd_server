@@ -146,7 +146,8 @@ class PyFTDIAdapter(jtag):
             if (tms1Pos > head):
                 ## Handle TDI bits with TMS = '0'
                 #
-                print('Bit Segment with TMS as "0": ', tms_stream[head:tms1Pos], 'Head: {} TMS1Pos:{} TMS Pos: {}'.format(head, tms1Pos, tms_stream.pos))
+                if (self.verbosity_level >= 2):
+                    print('Bit Segment with TMS as "0": ', tms_stream[head:tms1Pos], 'Head: {} TMS1Pos:{} TMS Pos: {}'.format(head, tms1Pos, tms_stream.pos))
 
                 # Write out the TDI bits with TMS set to '0'
                 tdo_stream += self.device.write_tdi_read_tdo(tdi_stream[head:tms1Pos])
@@ -178,26 +179,31 @@ class PyFTDIAdapter(jtag):
             # First, check that tms0Pos has advanced past head,
             # otherwise, it is another segment where TMS is '0', so
             # skip to above.
-            if (tms0Pos > head):
-                print('Bit Seqment with TMS as "1": ', tms_stream[head:tms0Pos], 'Head: {} TMS0Pos:{} TMS Pos: {}'.format(head, tms0Pos, tms_stream.pos))
+            while (tms0Pos > head):
+
+                # Can only write a maximum of 7 TMS bits so make this
+                # next segment a maximum of 7 bits and repeat until
+                # this TMS as "1" segment is sent.
+                tail = min(tms0Pos,head+7)
+
+                if (self.verbosity_level >= 2):
+                    print('Bit Seqment with TMS as "1": ', tms_stream[head:tail], 'Head: {} Tail: {} TMS0Pos:{} TMS Pos: {}'.format(head, tail, tms0Pos, tms_stream.pos))
 
                 # Check the assumption that TDI does not change during this bit sequence where TMS is a '1'
                 if (self.verbosity_level >= 1):
-                    if (tdi_stream[head:tms0Pos] != BitStream(int=0, length=(tms0Pos-head)) and
-                        tdi_stream[head:tms0Pos] != BitStream(int=-1, length=(tms0Pos-head))):
-                        print('TDI Segment with TMS as "1" is not constant! TDI: ', tdi_stream[head:tms0Pos], ' TMS: ', tms_stream[head:tms0Pos])
+                    if (tdi_stream[head:tail] != BitStream(int=0, length=(tail-head)) and
+                        tdi_stream[head:tail] != BitStream(int=-1, length=(tail-head))):
+                        print('TDI Segment with TMS as "1" is not constant! TDI: ', tdi_stream[head:tail], ' TMS: ', tms_stream[head:tail])
                 
                 # Write out the TMS bits with TDI set to the final bit
-                # in the sequence. Since tms0Pos is the position of
-                # the start of the next segment (or end of the
-                # sequence), subtract 1 to grab the last TDI bit in
-                # the sequence.
-                tdo_stream += self.device.write_tms_tdi_read_tdo(tms_stream[head:tms0Pos], tdi_stream[tms0Pos-1])
+                # in the sequence.
+                tdo_stream += self.device.write_tms_tdi_read_tdo(tms_stream[head:tail], tdi_stream[tail-1])
 
-            # Advance head to next bit segment. If completed all bits,
-            # head == len(tms_stream) and therefore while complete
-            # loop
-            head = tms0Pos
+                # Advance head to next bit segment.
+                head = tail
+
+            # If have sent all bits, head will equal len(tms_stream) and
+            # therefore will complete loop
 
         #... return the values returned over TDO.
         return tdo_stream
