@@ -43,21 +43,19 @@ class FT4232H(PyFTDIAdapter):
     #@@@#TDO_PORT = 2
     #@@@#TMS_PORT = 3
 
-    DEFAULT_FREQ = int(1e6)
+    MAX_FREQ = 1e6
     FTDI_URL = 'ftdi://ftdi:4232h/1'
 
-    def __init__(self, serial_number=None):
+    def __init__(self):
         """
             Create a new instance of the FT4232H.
 
             @@@ Add ability to set which port to use
 
-            @@@ serial_number -- The serial number of the board to connect to, or None to use
-                             the first available bitbangable FTDI. Use caution with this one!
         """
 
-        #@@@#self._jtag = JtagEngine(trst=False, frequency=DEFAULT_FREQ)
-        self._jtag = JtagController(trst=False, frequency=self.DEFAULT_FREQ)
+        ## Getting USB Timeout errors, try 10000 ms for both
+        self._jtag = JtagController(trst=False, frequency=self.MAX_FREQ, usb_read_timeout=10000, usb_write_timeout=10000)
 		
         # If FTDI_DEVICE environment variable, use it instead of self.FTDI_URL
         url = environ.get('FTDI_DEVICE', self.FTDI_URL)
@@ -77,15 +75,22 @@ class FT4232H(PyFTDIAdapter):
         self._jtag.close()
         
 
+    def set_frequency(self, frequency):
+        """
+            Set the TCK Frequency
+        """
+
+        frequency = min(frequency, self.MAX_FREQ)
+        actualFreq = self._jtag.set_frequency(frequency)
+
+        return actualFreq
+
     def set_tck_period(self, period):
         """
             Handle the settck virtual cable command which requests a certain TCK period. Return the actual period.
         """
 
-        #@@@# Modify to actually change frequency using PyFTDI functions.
-        
-        ## Actual Period depends on many factors since this tries to simply go as fast as it can. So nothing to set. Respond that it goes at 100 Hz or 10e6 ns
-        return int(1e9//self.DEFAULT_FREQ)
+        return int(1e9/self.set_frequency(1e9/period))
         
 
 # General name of class for server

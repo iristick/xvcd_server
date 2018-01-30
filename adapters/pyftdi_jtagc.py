@@ -67,21 +67,26 @@ class JtagController:
     TMS_BIT = 0x08   # FTDI output
     TRST_BIT = 0x10  # FTDI output, not available on 2232 JTAG debugger
     JTAG_MASK = 0x1f
-    FTDI_PIPE_LEN = 512
+    FTDI_PIPE_LEN = 512         # byte length of FTDI USB PIPE/FIFO
 
-    MAX_WRITE_BYTES = 65536     # a property of the FTDI MPSSE but not defined in PyFTDI
+    ## The FTDI MPSSE can take up to 65536 bytes, but let's use the
+    ## FTDI PIPE Len if it is less
+    MAX_WRITE_BYTES = min(FTDI_PIPE_LEN,65536)
+    
     RW_BITS_PVE_NVE_MSB = 0x33  # MPSSE command not defined in PyFTDI
     RW_BITS_NVE_PVE_MSB = 0x36  # MPSSE command not defined in PyFTDI
     
     # Private API
-    def __init__(self, trst=False, frequency=3.0E6):
+    def __init__(self, trst=False, frequency=3.0E6, usb_read_timeout=5000, usb_write_timeout=5000):
         """
         trst uses the nTRST optional JTAG line to hard-reset the TAP
           controller
         """
         self._ftdi = Ftdi()
+        self._ftdi.timeouts = (usb_read_timeout, usb_write_timeout)
         self._trst = trst
         self._frequency = frequency
+        self._ftdi_opened = False
         self.direction = (JtagController.TCK_BIT |
                           JtagController.TDI_BIT |
                           JtagController.TMS_BIT |
@@ -92,16 +97,28 @@ class JtagController:
     # Public API
     def configure(self, url):
         """Configure the FTDI interface as a JTAG controller"""
+        print('Configure with Freq: {}'.format(self._frequency))
+        
         self._ftdi.open_mpsse_from_url(
             url, direction=self.direction, frequency=self._frequency)
+        self._ftdi_opened = True
+
         # FTDI requires to initialize all GPIOs before MPSSE kicks in
         cmd = array('B', (Ftdi.SET_BITS_LOW, 0x0, self.direction))
         self._ftdi.write_data(cmd)
 
     def close(self):
-        if self._ftdi:
+        if self._ftdi_opened:
             self._ftdi.close()
-            self._ftdi = None
+            self._ftdi_opened = False
+
+    def set_frequency(self, frequency):
+        # Configure clock
+        self._frequency = frequency
+
+        print('FTDI USB Timeouts: read={} write={}'.format(self._ftdi.timeouts[0], self._ftdi.timeouts[1]))
+
+        return self._ftdi.set_frequency(self._frequency)
 
     def purge(self):
         self._ftdi.purge_buffers()
@@ -135,8 +152,12 @@ class JtagController:
         if not self._ftdi:
             raise JtagError("FTDI controller terminated")
         if self._write_buff:
-            self._ftdi.write_data(self._write_buff)
-            self._write_buff = array('B')
+            try:
+                self._ftdi.write_data(self._write_buff)
+                self._write_buff = array('B')
+            except usb.core.USBError:
+                pass            # FTDI should be catching the error
+
 
     def write_tms(self, tms):
         """Change the TAP controller state"""
@@ -289,7 +310,7 @@ class JtagController:
         if not self._ftdi:
             raise JtagError("FTDI controller terminated")
         # Currrent buffer + new command + send_immediate
-        if (len(self._write_buff)+len(cmd)+1) >= JtagController.FTDI_PIPE_LEN:
+        if (len(self._write_buff)+len(cmd)+1) >= self.FTDI_PIPE_LEN:
             self.sync()
         self._write_buff.extend(cmd)
 
@@ -324,9 +345,11 @@ class JtagController:
 
         self._stack_cmd(cmd)
         self.sync()
+        
         data = self._ftdi.read_data_bytes(1, 4)
         if (len(data) != 1):
             raise JtagError('Not all data read! Expected {} bytes but only read {} bytes'.format(1,len(data)))
+
         tdo = BitStream(data)
         tdo = tdo[:length] # only pass back the same number of bits as clocked out
         return tdo
@@ -341,7 +364,7 @@ class JtagController:
 
     def _read_bytes(self, length):
         """Read out bytes from TDO"""
-        if length > JtagController.FTDI_PIPE_LEN:
+        if length > self.FTDI_PIPE_LEN:
             raise JtagError("Cannot fit into FTDI fifo")
         alen = length-1
         cmd = array('B', (Ftdi.READ_BYTES_NVE_LSB, alen & 0xff,
@@ -364,18 +387,24 @@ class JtagController:
 
         # Check number of bits.
         #
+        if olen > self.FTDI_PIPE_LEN:
+            raise JtagError("Cannot fit read data into FTDI fifo")
+        #
         # NOTE: the PyFTDI Ftdi class does not define this maximum so we do instead. 
         if (olen > self.MAX_WRITE_BYTES):
             raise JtagError('Too many bits: {}'.format(olen*8))
-        
-        cmd = array('B', (Ftdi.RW_BYTES_PVE_NVE_MSB, olen & 0xff,
-                          (olen >> 8) & 0xff))
+
+        # The byte length to pass to the MPSSE is -1 the actual length, LSB first
+        cmd = array('B', (Ftdi.RW_BYTES_PVE_NVE_MSB, (olen-1) & 0xff,
+                          ((olen-1) >> 8) & 0xff))
         cmd.extend(bytes_)
         self._stack_cmd(cmd)
         self.sync()
+
         data = self._ftdi.read_data_bytes(olen, 4)
         if (len(data) != olen):
             raise JtagError('Not all data read! Expected {} bytes but only read {} bytes'.format(olen,len(data)))
+
         return BitStream(data)
 
     def _write_bytes(self, out):

@@ -64,14 +64,27 @@ class PyFTDIAdapter(jtag):
         self.verbosity_level = level
 
 
+    def set_frequency(self, frequncey):
+        """
+            Set the TCK Frequency
+        """
+        ## @@@ NOTE: The initial frequency that is passed in during
+        ## configuration/open does not seem to work and a call here is
+        ## needed after things are opened to properly set the
+        ## frequency.
+        actualFreq = self.device.set_frequency(frequency)
+
+        if (self.verbosity_level >= 1):
+            print("Requested Freq: {}  Actual Freq: {}".format(1e9/period, actualFreq))
+            
+        return actualFreq
+
     def set_tck_period(self, period):
         """
             Handle the settck virtual cable command which requests a certain TCK period. Return the actual period.
         """
 
-        ## Actual Period depends on many factors since this tries to simply go as fast as it can. So nothing to set. Respond that it goes at 100 Hz or 10e6 ns
-        return int(10e6)
-
+        return int(1e9/self.set_frequency(1e9/period))
 
     #def jtag_general(self, tms_stream, tdi_stream):
     def send_data(self, tms_stream, tdi_stream):

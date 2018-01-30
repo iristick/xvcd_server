@@ -26,7 +26,7 @@ from math import ceil
 import argparse
 import importlib
 
-BIT_SHIFT_MAX = 512
+BIT_SHIFT_MAX = 2048            # FTDI MPSSE can do 65536*8, but 2048 seems to be what everyone responds with
 XVC_VERSION = 1.0
 XVC_INFO = "xvcServer_v{:.1f}:{}\n".format(XVC_VERSION, BIT_SHIFT_MAX) 
 
@@ -136,230 +136,237 @@ class xvcd_server(socketserver.BaseRequestHandler):
             return
         self.server.has_client_connected = True
 
-        while(True):
+        try:
+            while(True):
 
-            ## Read the first two characters to differentiate the commands
-            cmdSnippet = self.sread(2)
+                ## Read the first two characters to differentiate the commands
+                cmdSnippet = self.sread(2)
 
-            ## Handle commands
-            if (cmdSnippet == b'ge'):
-                ## From https://github.com/Xilinx/XilinxVirtualCable#message-getinfo:
-                #
-                # getinfo
-                #
-                # The primary use of "getinfo:" message is to get the XVC
-                # server version. The server version provides a client a
-                # way of determining the protocol capabilites of the
-                # server.
-                #
-                # Server Returns:
-                #
-                # “xvcServer_v1.0:<xvc_vector_len>\n”
-                # Where:
-                #
-                # <xvc_vector_len> is the max width of the vector that can be shifted
-                #                  into the server (in ASCII)
-                #
-
-                # Expect this to be "getinfo:", so read the rest of the
-                # command and verify it, just in case
-                data = self.sread(6)
-                
-                if (data == b'tinfo:'):
-                    if(self.server.opts.verbose >= 2):
-                        print('CMD=getinfo - Response: {}'.format(XVC_INFO))
-                    self.request.sendall(XVC_INFO.encode())
-                    continue    ## get next input
-                else:
-                    print('Invalid command "{}". Aborting!'.format(cmdSnippet + data))
-                    break       ## Abort
-
-            elif (cmdSnippet == b'se'): 
-                ## From https://github.com/Xilinx/XilinxVirtualCable#message-settck:
-                #            
-                # The "settck:" message configures the server TCK
-                # period. When sending JTAG vectors the TCK rate may need
-                # to be varied to accomodate cable and board signal
-                # integrity conditions. This command is used by clients to
-                # adjust the TCK rate in order to slow down or speed up
-                # the shifting of JTAG vectors.
-                #
-                # Syntax:
-                # Client Sends:   "settck:<set period>"
-                # Server Returns: “<current period>”
-                #
-                # Where:
-                #
-                # <set period>      is TCK period specified in ns. This value is a little-endian
-                #                   integer value.
-                # <current period>  is the value set on the server by the settck command. If
-                #                   the server cannot set the value then it will return the
-                #                   current value.
-                #
-
-                # Expect this to be "settck:<set period>", so read the rest of the
-                # command and verify it, just in case
-                data = self.sread(9)
-                
-                if (data[0:5] == b'ttck:'):
-                    ## YES, it is settck:<set period>
+                ## Handle commands
+                if (cmdSnippet == b'ge'):
+                    ## From https://github.com/Xilinx/XilinxVirtualCable#message-getinfo:
                     #
-                    # Now, grab the period argument
-                    set_period = int.from_bytes(data[5:9], byteorder='little')
-                
-                    ## Ask the JTAG adapter to set the TCK period and
-                    #  return the period that it says it can do
-                    current_period = self.server.jtag.set_tck_period(set_period)
-                
-                    if(self.server.opts.verbose >= 2):
-                        print('CMD={}:{} - Response={}'.format(cmdSnippet+data[0:5], set_period, current_period))
-
-                    self.request.sendall(current_period.to_bytes(4, byteorder='little'))
-                    continue ## get next input
-                else:
-                    print('Invalid command "{}". Aborting!'.format(cmdSnippet + data))
-                    break       ## Abort
-
-            elif (cmdSnippet == b'sh'): 
-                ## From https://github.com/Xilinx/XilinxVirtualCable#message-shift:
-                #            
-                # The "shift:" message is used to shift JTAG vectors in and out of a
-                # device. The number of bits to shift is specified as the first shift
-                # command parameter followed by the TMS and TDI data vectors. The TMS
-                # and TDI vectors are sized according to the number of bits to shift,
-                # rouneded to the nearest byte. For instance if shifting in 13 bits the
-                # byte vectors will be rounded to 2 bytes. Upon completion of the JTAG
-                # shift operation the server will return a byte sized vector containing
-                # the sampled target TDO value for each shifted TCK clock.
-                # 
-                # Syntax:
-                # Client Sends:   "shift:<num bits><tms vector><tdi vector>"
-                # Server Returns: “<tdo vector>”
-                # 
-                # Where:
-                # 
-                # <num bits>   : is a integer in little-endian mode. This represents the number
-                #                of TCK clk toggles needed to shift the vectors out
-                # <tms vector> : is a byte sized vector with all the TMS shift in bits Bit 0 in
-                #                Byte 0 of this vector is shifted out first. The vector is
-                #                num_bits and rounds up to the nearest byte.
-                # <tdi vector> : is a byte sized vector with all the TDI shift in bits Bit 0 in
-                #                Byte 0 of this vector is shifted out first. The vector is
-                #                num_bits and rounds up to the nearest byte.
-                # <tdo vector> : is a byte sized vector with all the TDO shift out bits Bit 0 in
-                #                Byte 0 of this vector is shifted out first. The vector is
-                #                num_bits and rounds up to the nearest byte.
-                #
-
-                # Expect this to be "shift:<num bits><tms vector><tdi vector>", so read the rest of the
-                # command and verify it, just in case
-                data = self.sread(4)
-                
-                if (data == b'ift:'):
-                    ## YES, it is "shift:"
+                    # getinfo
                     #
-                    # However, since all of the real processing
-                    # happens for this command, handle it below. Here,
-                    # simple output a verbose message and continue
-                    # below
-                
-                    if(self.server.opts.verbose >= 2):
-                        print('CMD={}:'.format(cmdSnippet+data))
+                    # The primary use of "getinfo:" message is to get the XVC
+                    # server version. The server version provides a client a
+                    # way of determining the protocol capabilites of the
+                    # server.
+                    #
+                    # Server Returns:
+                    #
+                    # “xvcServer_v1.0:<xvc_vector_len>\n”
+                    # Where:
+                    #
+                    # <xvc_vector_len> is the max width of the vector that can be shifted
+                    #                  into the server (in ASCII)
+                    #
+
+                    # Expect this to be "getinfo:", so read the rest of the
+                    # command and verify it, just in case
+                    data = self.sread(6)
+
+                    if (data == b'tinfo:'):
+                        if(self.server.opts.verbose >= 1):
+                            print('CMD=getinfo - Response: {}'.format(XVC_INFO))
+                            self.request.sendall(XVC_INFO.encode())
+                        continue    ## get next input
+                    else:
+                        print('Invalid command "{}". Aborting!'.format(cmdSnippet + data))
+                        break       ## Abort
+
+                elif (cmdSnippet == b'se'): 
+                    ## From https://github.com/Xilinx/XilinxVirtualCable#message-settck:
+                    #            
+                    # The "settck:" message configures the server TCK
+                    # period. When sending JTAG vectors the TCK rate may need
+                    # to be varied to accomodate cable and board signal
+                    # integrity conditions. This command is used by clients to
+                    # adjust the TCK rate in order to slow down or speed up
+                    # the shifting of JTAG vectors.
+                    #
+                    # Syntax:
+                    # Client Sends:   "settck:<set period>"
+                    # Server Returns: “<current period>”
+                    #
+                    # Where:
+                    #
+                    # <set period>      is TCK period specified in ns. This value is a little-endian
+                    #                   integer value.
+                    # <current period>  is the value set on the server by the settck command. If
+                    #                   the server cannot set the value then it will return the
+                    #                   current value.
+                    #
+
+                    # Expect this to be "settck:<set period>", so read the rest of the
+                    # command and verify it, just in case
+                    data = self.sread(9)
+
+                    if (data[0:5] == b'ttck:'):
+                        ## YES, it is settck:<set period>
+                        #
+                        # Now, grab the period argument
+                        set_period = int.from_bytes(data[5:9], byteorder='little')
+
+                        ## Ask the JTAG adapter to set the TCK period and
+                        #  return the period that it says it can do
+                        current_period = self.server.jtag.set_tck_period(set_period)
+
+                        if(self.server.opts.verbose >= 1):
+                            print('CMD={}:{} - Response={}'.format(cmdSnippet+data[0:5], set_period, current_period))
+
+                        self.request.sendall(current_period.to_bytes(4, byteorder='little'))
+                        continue ## get next input
+                    else:
+                        print('Invalid command "{}". Aborting!'.format(cmdSnippet + data))
+                        break       ## Abort
+
+                elif (cmdSnippet == b'sh'): 
+                    ## From https://github.com/Xilinx/XilinxVirtualCable#message-shift:
+                    #            
+                    # The "shift:" message is used to shift JTAG vectors in and out of a
+                    # device. The number of bits to shift is specified as the first shift
+                    # command parameter followed by the TMS and TDI data vectors. The TMS
+                    # and TDI vectors are sized according to the number of bits to shift,
+                    # rouneded to the nearest byte. For instance if shifting in 13 bits the
+                    # byte vectors will be rounded to 2 bytes. Upon completion of the JTAG
+                    # shift operation the server will return a byte sized vector containing
+                    # the sampled target TDO value for each shifted TCK clock.
+                    # 
+                    # Syntax:
+                    # Client Sends:   "shift:<num bits><tms vector><tdi vector>"
+                    # Server Returns: “<tdo vector>”
+                    # 
+                    # Where:
+                    # 
+                    # <num bits>   : is a integer in little-endian mode. This represents the number
+                    #                of TCK clk toggles needed to shift the vectors out
+                    # <tms vector> : is a byte sized vector with all the TMS shift in bits Bit 0 in
+                    #                Byte 0 of this vector is shifted out first. The vector is
+                    #                num_bits and rounds up to the nearest byte.
+                    # <tdi vector> : is a byte sized vector with all the TDI shift in bits Bit 0 in
+                    #                Byte 0 of this vector is shifted out first. The vector is
+                    #                num_bits and rounds up to the nearest byte.
+                    # <tdo vector> : is a byte sized vector with all the TDO shift out bits Bit 0 in
+                    #                Byte 0 of this vector is shifted out first. The vector is
+                    #                num_bits and rounds up to the nearest byte.
+                    #
+
+                    # Expect this to be "shift:<num bits><tms vector><tdi vector>", so read the rest of the
+                    # command and verify it, just in case
+                    data = self.sread(4)
+
+                    if (data == b'ift:'):
+                        ## YES, it is "shift:"
+                        #
+                        # However, since all of the real processing
+                        # happens for this command, handle it below. Here,
+                        # simple output a verbose message and continue
+                        # below
+
+                        if(self.server.opts.verbose >= 2):
+                            print('CMD={}:'.format(cmdSnippet+data))
+
+                    else:
+                        print('Invalid command "{}". Aborting!'.format(cmdSnippet + data))
+                        break       ## Abort
 
                 else:
-                    print('Invalid command "{}". Aborting!'.format(cmdSnippet + data))
+                    print('Invalid command snippet "{}". Aborting!'.format(cmdSnippet))
                     break       ## Abort
 
-            else:
-                print('Invalid command snippet "{}". Aborting!'.format(cmdSnippet))
-                break       ## Abort
-                
-            ## Command must be shift: to get this far, but have not read the argument yet - still could be invalid
-            #
-            # Read the bit length parameter
-            numBitsArg = self.sread(4)
-            if (not numBitsArg):
-                print('Reading "shift:" bit length parameter failed - ABORTING!')
-                break ## An error occurred - simply abort here
+                ## Command must be shift: to get this far, but have not read the argument yet - still could be invalid
+                #
+                # Read the bit length parameter
+                numBitsArg = self.sread(4)
+                if (not numBitsArg):
+                    print('Reading "shift:" bit length parameter failed - ABORTING!')
+                    break ## An error occurred - simply abort here
 
-            numBits = int.from_bytes(numBitsArg, byteorder='little')
-            numBytes = (numBits + 7) // 8
+                numBits = int.from_bytes(numBitsArg, byteorder='little')
+                numBytes = (numBits + 7) // 8
 
-            #@@@# Should we check buffer size like in xvcServer.c? Do we care in Python?
-                
-            if(self.server.opts.verbose >= 2):
-                print('shift: Num Bits: {} = Num Bytes: {}:'.format(numBits, numBytes))
+                #@@@# Should we check buffer size like in xvcServer.c? Do we care in Python?
 
-            # Read the TMS & TDI vectors
-            vectArg = self.sread(numBytes * 2)
-            if (not vectArg):
-                print('Reading "shift:" TMS & TDI vector parameters failed - ABORTING!')
-                break ## An error occurred - simply abort here
-
-            startTime = time.time()
-            
-            # Split args in TMS data and TDI data
-            #@@@#vectArg = [vectArg[0:numBytes], vectArg[numBytes:2*numBytes]]
-            #@@@#TMS = self.byteVectToBitStream(vectArg[0], numBits)
-            #@@@#TDI = self.byteVectToBitStream(vectArg[1], numBits)
-
-            # Split args in TMS data and TDI data, creating
-            # BitStream()s that have the first, lsb bit in index 0
-            # (ie. left-most)
-            TMS = self.byteVectToBitStream(vectArg[0:numBytes], numBits)
-            TDI = self.byteVectToBitStream(vectArg[numBytes:2*numBytes], numBits)
-
-            stopTime  = time.time()
-
-            if(self.server.opts.verbose >= 2):
-                print('TMS/TDI conversion time: {}'.format(stopTime-startTime))
-
-            if(self.server.opts.verbose >= 3):
-                print('TMS bitstream: {}'.format(TMS.bin))
-                print('TDI bitstream: {}'.format(TDI.bin))
-
-            # Fix for bug in Xilinx ISE
-            if(self.server.jtag.get_state() == self.server.jtag.EXIT_1_IR and TMS == bitstring.BitStream('0b11101')):
                 if(self.server.opts.verbose >= 2):
-                    print('Avoiding "route via Capture-IR"-bug')
+                    print('shift: Num Bits: {} = Num Bytes: {}:'.format(numBits, numBytes))
 
-                self.request.sendall(b'\x1f')
-                continue
+                # Read the TMS & TDI vectors
+                vectArg = self.sread(numBytes * 2)
+                if (not vectArg):
+                    print('Reading "shift:" TMS & TDI vector parameters failed - ABORTING!')
+                    break ## An error occurred - simply abort here
+
+                startTime = time.time()
+
+                # Split args in TMS data and TDI data
+                #@@@#vectArg = [vectArg[0:numBytes], vectArg[numBytes:2*numBytes]]
+                #@@@#TMS = self.byteVectToBitStream(vectArg[0], numBits)
+                #@@@#TDI = self.byteVectToBitStream(vectArg[1], numBits)
+
+                # Split args in TMS data and TDI data, creating
+                # BitStream()s that have the first, lsb bit in index 0
+                # (ie. left-most)
+                TMS = self.byteVectToBitStream(vectArg[0:numBytes], numBits)
+                TDI = self.byteVectToBitStream(vectArg[numBytes:2*numBytes], numBits)
+
+                stopTime  = time.time()
+
+                if(self.server.opts.verbose >= 2):
+                    print('TMS/TDI conversion time: {}'.format(stopTime-startTime))
+
+                if(self.server.opts.verbose >= 3):
+                    print('TMS bitstream: {}'.format(TMS.bin))
+                    print('TDI bitstream: {}'.format(TDI.bin))
+
+                # Fix for bug in Xilinx ISE
+                if(self.server.jtag.get_state() == self.server.jtag.EXIT_1_IR and TMS == bitstring.BitStream('0b11101')):
+                    if(self.server.opts.verbose >= 2):
+                        print('Avoiding "route via Capture-IR"-bug')
+
+                    self.request.sendall(b'\x1f')
+                    continue
 
 
-            startTime = time.time()
-            TDO = self.server.jtag.send_data(TMS, TDI)
-            stopTime  = time.time()
+                startTime = time.time()
+                TDO = self.server.jtag.send_data(TMS, TDI)
+                stopTime  = time.time()
 
-            if(self.server.opts.verbose >= 2):
-                sendTime = stopTime-startTime
-                bps =  numBits/sendTime
+                if(self.server.opts.verbose >= 2):
+                    sendTime = stopTime-startTime
+                    bps =  numBits/sendTime
 
-                ## Now store in a running list so can compute a running average
-                if 'bpsList' in vars():
-                    bpsList.append(bps)
-                    # Only keep the last ten bps
-                    if len(bpsList) > 10:
-                        bpsList.pop(0) # remove the oldest one
-                else:
-                    # Create the list since it doe snot yet exist
-                    bpsList = [bps]
+                    ## Now store in a running list so can compute a running average
+                    if 'bpsList' in vars():
+                        bpsList.append(bps)
+                        # Only keep the last ten bps
+                        if len(bpsList) > 10:
+                            bpsList.pop(0) # remove the oldest one
+                    else:
+                        # Create the list since it doe snot yet exist
+                        bpsList = [bps]
 
-                #@@@#print('>>>> bpsList: ', bpsList)
-                print('>>> send_data() time: {:.3f} - bps: {:.0f} - Avg. bps: {:.0f} <<<'.format(sendTime, bps, sum(bpsList)/len(bpsList)))
+                    #@@@#print('>>>> bpsList: ', bpsList)
+                    print('>>> send_data() time: {:.3f} - bps: {:.0f} - Avg. bps: {:.0f} <<<'.format(sendTime, bps, sum(bpsList)/len(bpsList)))
 
-            if(self.server.opts.verbose >= 3):
-                print('TDO bitstream: {}'.format(TDO.bin))
+                if(self.server.opts.verbose >= 3):
+                    print('TDO bitstream: {}'.format(TDO.bin))
 
-            # Add padding
-            TDO += bitstring.BitStream((8 - TDO.len) % 8)
-            TDO.reverse()
-            TDO.byteswap()
+                # Add padding
+                TDO += bitstring.BitStream((8 - TDO.len) % 8)
+                TDO.reverse()
+                TDO.byteswap()
 
-            # Return the TDO vector as response to "shift:" message
-            # and continue to top of loop.
-            self.request.sendall(TDO.tobytes())
+                # Return the TDO vector as response to "shift:" message
+                # and continue to top of loop.
+                self.request.sendall(TDO.tobytes())
 
+        except KeyboardInterrupt:
+            print("\nExiting Xilinx Virtual Cable Driver Server\n")            
+            self.finish()
+            self.server.has_client_connected = False
+            sys.exit(0)
+            
         # Abort the server
         self.finish()
         
