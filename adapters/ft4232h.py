@@ -24,7 +24,7 @@ from bitstring      import BitStream
 from adapters.jtag  import jtag
 from adapters.pyftdi  import PyFTDIAdapter
 
-from pyftdi.jtag import JtagEngine
+from pyftdi.jtag import JtagController, JtagError
 #@@@#from pyftdi.bits import BitSequence
 
 
@@ -56,7 +56,8 @@ class FT4232H(PyFTDIAdapter):
                              the first available bitbangable FTDI. Use caution with this one!
         """
 
-        self._jtag = JtagEngine(trst=False, frequency=DEFAULT_FREQ)
+        #@@@#self._jtag = JtagEngine(trst=False, frequency=DEFAULT_FREQ)
+        self._jtag = JtagController(trst=False, frequency=DEFAULT_FREQ)
 		
         # If FTDI_DEVICE environment variable, use it instead of self.FTDI_URL
         url = environ.get('FTDI_DEVICE', self.FTDI_URL)

@@ -32,7 +32,7 @@ import time
 
 import logging
 #@@@#from os import environ
-from pyftdi.jtag import JtagEngine
+from pyftdi.jtag import JtagController, JtagError
 #@@@#from pyftdi.bits import BitSequence
 
 class PyFTDIAdapter(jtag):
@@ -92,9 +92,23 @@ class PyFTDIAdapter(jtag):
         # The shift: VCD command sends a TMS bit vector and a TDI bit
         # vector of the same size so that each bit of TMS corresponds
         # to each bit of TDI. However, TMS is only needed which
-        # changing the JTAG TAP state machine. So the MPSSE registers
-        # only accept up to 7 consecutive settings of TMS with a
-        # single TDI bit output.
+        # changing the JTAG TAP state machine. So the FTDI MPSSE
+        # registers only accept up to 7 consecutive settings of TMS
+        # with a single TDI bit output for each TMS output.
+        #
+        # So this will have to be handled by searching for when TMS is
+        # a '1', breaking up the bitstring and sending in pieces to
+        # the JtagController so that TMS gets handled properly.
+        #
+        # Also, all of the Jtag functions are written with bits
+        # handled through the BitSequence object which appears to make
+        # the right-most bit in an array the lsb. This is opposite to
+        # the open source bitstring, which is used here and in lots of
+        # places. It has the lsb at the left-most bit in the array. So
+        # instead of bit swapping again for BitSequence, simply
+        # rewrite the worker functions from JtagController to use
+        # bitstring and to use different command opcodes to handle
+        # bitstrings properly.
         
         
         #For each simulatenous pair of bits in the transmission...
@@ -111,6 +125,26 @@ class PyFTDIAdapter(jtag):
 
         #... return the values returned over TDO.
         return tdo_stream
+
+
+    ## This is modified from the one in JtagController object in
+    ## PyFTDI. It is modified to handle bitstrings and to use the read
+    ## command to read TDI bits during TMS activity.
+    def write_tms(self, tms, tdi):
+        """ Control the TMS signal with a single bit of TDI """
+        if not isinstance(tms, BitStream):
+            raise JtagError('Expect TMS to be a BitStream')
+        length = len(tms)
+        if not (0 < length < 8):
+            raise JtagError('Invalid TMS length')
+        out = tms + BitArray(8-length) # pad to be a full byte
+        # apply TDI to be bit 7 - this TDI will be the same for every clock out of the TMS sequence
+        out[7] = tdi
+        
+        # print("TMS", tms, (self._last is not None) and 'w/ Last' or '')
+        cmd = array('B', (Ftdi.WRITE_BITS_TMS_NVE, length-1, out.tobyte()))
+        self.device._stack_cmd(cmd)
+        self.device.sync()
 
 
     def tick(self, tms, tdi, clock_delays = 0):
