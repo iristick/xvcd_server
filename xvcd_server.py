@@ -363,10 +363,8 @@ class xvcd_server(socketserver.BaseRequestHandler):
 
         except KeyboardInterrupt:
             print("\nExiting Xilinx Virtual Cable Driver Server\n")            
-            self.finish()
-            self.server.has_client_connected = False
-            sys.exit(0)
-            
+            pass
+        
         # Abort the server
         self.finish()
         

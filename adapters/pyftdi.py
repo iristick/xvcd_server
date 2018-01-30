@@ -203,7 +203,7 @@ class PyFTDIAdapter(jtag):
                     print('Bit Seqment with TMS as "1": ', tms_stream[head:tail], 'Head: {} Tail: {} TMS0Pos:{} TMS Pos: {}'.format(head, tail, tms0Pos, tms_stream.pos))
 
                 # Check the assumption that TDI does not change during this bit sequence where TMS is a '1'
-                if (self.verbosity_level >= 1):
+                if (self.verbosity_level >= 3):
                     if (tdi_stream[head:tail] != BitStream(int=0, length=(tail-head)) and
                         tdi_stream[head:tail] != BitStream(int=-1, length=(tail-head))):
                         print('TDI Segment with TMS as "1" is not constant! TDI: ', tdi_stream[head:tail], ' TMS: ', tms_stream[head:tail])

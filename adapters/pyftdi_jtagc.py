@@ -67,11 +67,12 @@ class JtagController:
     TMS_BIT = 0x08   # FTDI output
     TRST_BIT = 0x10  # FTDI output, not available on 2232 JTAG debugger
     JTAG_MASK = 0x1f
-    FTDI_PIPE_LEN = 512         # byte length of FTDI USB PIPE/FIFO
+    FTDI_WRITE_PIPE_LEN = 512    # byte length of FTDI USB Write (TX) PIPE/FIFO
+    FTDI_READ_PIPE_LEN = 512     # byte length of FTDI USB Read (RX) PIPE/FIFO
 
     ## The FTDI MPSSE can take up to 65536 bytes, but let's use the
     ## FTDI PIPE Len if it is less
-    MAX_WRITE_BYTES = min(FTDI_PIPE_LEN,65536)
+    MAX_WRITE_BYTES = min(FTDI_WRITE_PIPE_LEN,65536)
     
     RW_BITS_PVE_NVE_MSB = 0x33  # MPSSE command not defined in PyFTDI
     RW_BITS_NVE_PVE_MSB = 0x36  # MPSSE command not defined in PyFTDI
@@ -107,6 +108,11 @@ class JtagController:
         cmd = array('B', (Ftdi.SET_BITS_LOW, 0x0, self.direction))
         self._ftdi.write_data(cmd)
 
+        # Read the FIFO sizes and save them
+        (self.FTDI_WRITE_PIPE_LEN, self.FTDI_READ_PIPE_LEN) = self._ftdi.fifo_sizes
+        self.MAX_WRITE_BYTES = min(self.FTDI_WRITE_PIPE_LEN,65536) # update MAX_WRITE_BYTES
+        
+
     def close(self):
         if self._ftdi_opened:
             self._ftdi.close()
@@ -117,6 +123,7 @@ class JtagController:
         self._frequency = frequency
 
         print('FTDI USB Timeouts: read={} write={}'.format(self._ftdi.timeouts[0], self._ftdi.timeouts[1]))
+        print('FTDI USB Fifo Len: read={} write={}'.format(self.FTDI_READ_PIPE_LEN, self.FTDI_WRITE_PIPE_LEN))
 
         return self._ftdi.set_frequency(self._frequency)
 
@@ -201,7 +208,7 @@ class JtagController:
         # print("TMS", tms, (self._last is not None) and 'w/ Last' or '')
         # reset last bit
         #@@@self._last = None
-        cmd = array('B', (Ftdi.RW_BITS_TMS_PVE_NVE, length-1, tms.int))
+        cmd = array('B', (Ftdi.RW_BITS_TMS_PVE_NVE, length-1, tms.uint))
         self._stack_cmd(cmd)
         self.sync()
         data = self._ftdi.read_data_bytes(1, 4)
@@ -310,7 +317,7 @@ class JtagController:
         if not self._ftdi:
             raise JtagError("FTDI controller terminated")
         # Currrent buffer + new command + send_immediate
-        if (len(self._write_buff)+len(cmd)+1) >= self.FTDI_PIPE_LEN:
+        if (len(self._write_buff)+len(cmd)+1) >= self.FTDI_WRITE_PIPE_LEN:
             self.sync()
         self._write_buff.extend(cmd)
 
@@ -332,17 +339,21 @@ class JtagController:
         """Output bits on TDI while reading TDO bits in"""
 
         # a bitstring.BitStream() has first bit in left-most array position (ie. msb first)
-        byte = out.tobytes()    # pads to 8 bits
-        
         length = len(out)
+        byte = BitArray(out)    # copy out so can modify it
+        byte.append(8-length)   # pad 0's to be 8 bits long
 
         # Check number of bits.
         if not (0 < length <= 8):
             raise JtagError('Wrong number of bits: {}'.format(length))
 
+        #@@@#print('out: ', out, 'length: ', length, 'byte: ', byte, 'byte as uint: ', byte.uint)
+        
         # length of 0 for 1 bit, length of 7 for 8 bits, etc.
-        cmd = array('B', (self.RW_BITS_PVE_NVE_MSB, length-1, byte.int))
+        cmd = array('B', (self.RW_BITS_PVE_NVE_MSB, length-1, byte.uint))
 
+        #@@@#print('cmd: ', cmd)
+        
         self._stack_cmd(cmd)
         self.sync()
         
@@ -364,7 +375,7 @@ class JtagController:
 
     def _read_bytes(self, length):
         """Read out bytes from TDO"""
-        if length > self.FTDI_PIPE_LEN:
+        if length > self.FTDI_READ_PIPE_LEN:
             raise JtagError("Cannot fit into FTDI fifo")
         alen = length-1
         cmd = array('B', (Ftdi.READ_BYTES_NVE_LSB, alen & 0xff,
@@ -387,8 +398,8 @@ class JtagController:
 
         # Check number of bits.
         #
-        if olen > self.FTDI_PIPE_LEN:
-            raise JtagError("Cannot fit read data into FTDI fifo")
+        if olen > self.FTDI_READ_PIPE_LEN:
+            raise JtagError("Cannot fit read data of {} bytes into FTDI fifo".format(olen))
         #
         # NOTE: the PyFTDI Ftdi class does not define this maximum so we do instead. 
         if (olen > self.MAX_WRITE_BYTES):
