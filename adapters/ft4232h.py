@@ -20,11 +20,11 @@ import logging
 from os import environ
 import atexit
 
-from bitstring      import BitStream
-from adapters.jtag  import jtag
-from adapters.pyftdi  import PyFTDIAdapter
+from bitstring              import BitStream
+from adapters.jtag          import jtag
+from adapters.pyftdi        import PyFTDIAdapter
 
-from pyftdi.jtag import JtagController, JtagError
+from adapters.py_ftdi_jtagc import JtagController, JtagError
 #@@@#from pyftdi.bits import BitSequence
 
 

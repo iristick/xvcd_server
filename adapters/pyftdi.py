@@ -94,7 +94,10 @@ class PyFTDIAdapter(jtag):
         # to each bit of TDI. However, TMS is only needed which
         # changing the JTAG TAP state machine. So the FTDI MPSSE
         # registers only accept up to 7 consecutive settings of TMS
-        # with a single TDI bit output for each TMS output.
+        # with a single TDI bit output for each TMS output. Since more
+        # than 5 consecutive TMS high means reset, this is not a
+        # limitation against JTAG but makes interfacing with XVCD a
+        # little more challenging.
         #
         # So this will have to be handled by searching for when TMS is
         # a '1', breaking up the bitstring and sending in pieces to
@@ -110,76 +113,93 @@ class PyFTDIAdapter(jtag):
         # bitstring and to use different command opcodes to handle
         # bitstrings properly.
         
-        
-        #For each simulatenous pair of bits in the transmission...
-        for (tms, tdi) in zip(tms_stream, tdi_stream):
 
-            #...perform the core transmission...
-            tdo = self.tick(tms, tdi)
+        # First, search through TMS bit vector for the next '1'.
+        #
+        # Send out all of the TDI bits before TMS is '1'
+        #
+        # Grab the next section of bits where TMS is high plus it
+        # being low once and grab TDI when it is first low for it to
+        # be the TDI setting during the next sequence.
+        #
+        # Repeat until done
 
-            #... and add the result to our resultant stream.
-            tdo_stream += BitStream(bool=tdo)
+        head = 0                # head of bit sequence of interest
+        while (head < len(tms_stream)):
+            # Find position of the next bit where TMS is '1'
+            tms1Find = tms_stream.find('0b1', start=head)
 
-            #Track where we are the JTAG state machine, in case TMS changes.
-            self.track_tms(tms)
+            if tms1Find:
+                # If a '1' exists, save its bit position
+                tms1Pos = tms1Find[0]
+            else:
+                # Else, set its position to the end
+                tms1Pos = len(t)
+
+            # Handle the bit sequence where TMS is a '0' - focus on
+            # sending TDI out with TMS set to '0'.
+            #
+            # First, check that tms1Pos has advanced past head,
+            # otherwise, it is another segment where TMS is '1', so
+            # skip to below.
+            if (tms1Pos > head):
+                ## Handle TDI bits with TMS = '0'
+                #
+                print('Bit Seqment with TMS="0": ', tms_stream[head:tms1Pos], 'Head: {} TMS1Pos:{} TMS Pos: {}'.format(head, tms1Pos, tms_stream.pos))
+
+                # Write out the TDI bits with TMS set to '0'
+                tdo_stream += self.device.write_tdi_read_tdo(tdi_stream[head:tms1Pos])
+
+            # Advance head to next bit segment. If completed all bits, break out of loop
+            head = tms1Pos
+            if head >= len(tms_stream):
+                break
+
+            # Find position of the next bit where TMS is '0'
+            tms0Find = tms_stream.find('0b0', start=head)
+
+            if tms0Find:
+                # If a '0' exists, save its bit position. Since we
+                # want the last TMS bit sent in this section to return
+                # to '0', increase the position by 1.
+                tms0Pos = tms0Find[0]+1
+            else:
+                # Else, found no '0' so set its position to the end
+                tms0Pos = len(t)
+                
+            # Handle the bit sequence where TMS is a '1' with a single
+            # '0' unless have reached the end of the bit sequence.
+            #
+            # Will send out TMS with TDI set to the value when TMS is
+            # '0'. If TMS as '0' was not found, set TDI to the last
+            # value given.
+            #
+            # First, check that tms0Pos has advanced past head,
+            # otherwise, it is another segment where TMS is '0', so
+            # skip to above.
+            if (tms0Pos > head):
+                print('Bit Seqment with TMS as "0": ', tms_stream[head:tms0Pos], 'Head: {} TMS0Pos:{} TMS Pos: {}'.format(head, tms0Pos, tms_stream.pos))
+
+                # Check the assumption that TDI does not change during this bit sequence where TMS is a '1'
+                if (self.verbosity_level >= 1):
+                    if (tdi_stream[head:tms0Pos] != BitStream(int=0, length=(tms0Pos-head)) and
+                        tdi_stream[head:tms0Pos] != BitStream(int=-1, length=(tms0Pos-head))):
+                        print('TDI bit sequence with TMS as "1" is not constant! TDI: ', tdi_stream[head:tms0Pos], ' TMS: ', tms_stream[head:tms0Pos])
+                
+                # Write out the TMS bits with TDI set to the final bit
+                # in the sequence. Since tms0Pos is the position of
+                # the start of the next segment (or end of the
+                # sequence), subtract 1 to grab the last TDI bit in
+                # the sequence.
+                tdo_stream += self.device.write_tms_tdi_read_tdo(tms_stream[head:tms0Pos], tdi_stream[tms0Pos-1])
+
+            # Advance head to next bit segment. If completed all bits,
+            # head == len(tms_stream) and therefore while complete
+            # loop
+            head = tms0Pos
 
         #... return the values returned over TDO.
         return tdo_stream
-
-
-    ## This is modified from the one in JtagController object in
-    ## PyFTDI. It is modified to handle bitstrings and to use the read
-    ## command to read TDI bits during TMS activity.
-    def write_tms(self, tms, tdi):
-        """ Control the TMS signal with a single bit of TDI """
-        if not isinstance(tms, BitStream):
-            raise JtagError('Expect TMS to be a BitStream')
-        length = len(tms)
-        if not (0 < length < 8):
-            raise JtagError('Invalid TMS length')
-        out = tms + BitArray(8-length) # pad to be a full byte
-        # apply TDI to be bit 7 - this TDI will be the same for every clock out of the TMS sequence
-        out[7] = tdi
-        
-        # print("TMS", tms, (self._last is not None) and 'w/ Last' or '')
-        cmd = array('B', (Ftdi.WRITE_BITS_TMS_NVE, length-1, out.tobyte()))
-        self.device._stack_cmd(cmd)
-        self.device.sync()
-
-
-    def tick(self, tms, tdi, clock_delays = 0):
-        """
-            Sets the values of the TMS and TDI lines for a single cycle of JTAG communication,
-            and samples TDO at the appropriate time.
-
-            tms: The value of TMS.
-            tdi: The value of TDI.
-        """
-
-        #Apply a falling edge of the clock.
-        self.set_tck(0)
-
-        #... and adjust our output values.
-        self.set_tms(tms)
-        self.set_tdi(tdi)
-
-        #If requested, wait.
-        if clock_delays:
-            time.sleep(clock_delay);
-
-        #Apply a rising edge, and sample the input.
-        self.set_tck(1);
-        tdo = self.get_tdo()
-
-        #If requested, wait.
-        if clock_delays:
-            time.sleep(clock_delay);
-
-        if (self.verbosity_level >= 3):
-            print("{0}, {1}, {2}".format(1 if tdi else 0, 1 if tdo else 0, 1 if tms else 0))
-
-        #Return the value of TDO.
-        return tdo
 
 
     def set_program(self, value):
@@ -196,25 +216,5 @@ class PyFTDIAdapter(jtag):
         pass
 
 
-    def _set_bit(self, bit_number, value=1):
-        """
-            Sets a single bit of the FTDI bit-bang port.
-
-            bit_number: The bit number of the port to set.
-            value: The value to set-- should be 0 or 1 (or equivalent truth values).
-        """
-        if value:
-            self.device.port |=  (1 << bit_number)
-        else:
-            self.device.port &= ~(1 << bit_number)
-
-
-    def _get_bit(self, bit_number):
-        """
-            Reads a given bit of the FTI bit-bang port.
-
-            bit_number: The bit number of the port to read.
-        """
-        return 1 if (self.device.port & (1 << bit_number)) else 0
 
 
