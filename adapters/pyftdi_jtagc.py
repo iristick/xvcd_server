@@ -53,6 +53,8 @@ from pyftdi.ftdi import Ftdi
 #@@@# Will go away once the port is complete
 from pyftdi.bits import BitSequence
 
+from bitstring import BitStream
+
 class JtagError(Exception):
     """Generic JTAG error"""
 
@@ -162,7 +164,7 @@ class JtagController:
         if not (0 < length < 8):
             raise JtagError('Invalid TMS length')
         tms.reverse()           # must reverse bits since only lsb write seems to be supported
-        tms.prepend(8-len(t))   # prepend 0's to be 7 bits long
+        tms.prepend(8-len(tms)) # prepend 0's to be 7 bits long
         tms = tdi[0] + tms      # left-most bit will be for TDI, so shift over and prepend the tdi bit
         # apply the last TDI bit
         #@@@if self._last is not None:

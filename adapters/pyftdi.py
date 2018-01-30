@@ -21,7 +21,7 @@
 #
 #------------------------------------------------------------------------------
 
-import bitstring
+#@@@#import bitstring
 from bitstring import BitStream
 from adapters.jtag import jtag
 
@@ -135,7 +135,7 @@ class PyFTDIAdapter(jtag):
                 tms1Pos = tms1Find[0]
             else:
                 # Else, set its position to the end
-                tms1Pos = len(t)
+                tms1Pos = len(tms_stream)
 
             # Handle the bit sequence where TMS is a '0' - focus on
             # sending TDI out with TMS set to '0'.
@@ -146,7 +146,7 @@ class PyFTDIAdapter(jtag):
             if (tms1Pos > head):
                 ## Handle TDI bits with TMS = '0'
                 #
-                print('Bit Seqment with TMS="0": ', tms_stream[head:tms1Pos], 'Head: {} TMS1Pos:{} TMS Pos: {}'.format(head, tms1Pos, tms_stream.pos))
+                print('Bit Segment with TMS as "0": ', tms_stream[head:tms1Pos], 'Head: {} TMS1Pos:{} TMS Pos: {}'.format(head, tms1Pos, tms_stream.pos))
 
                 # Write out the TDI bits with TMS set to '0'
                 tdo_stream += self.device.write_tdi_read_tdo(tdi_stream[head:tms1Pos])
@@ -166,7 +166,7 @@ class PyFTDIAdapter(jtag):
                 tms0Pos = tms0Find[0]+1
             else:
                 # Else, found no '0' so set its position to the end
-                tms0Pos = len(t)
+                tms0Pos = len(tms_stream)
                 
             # Handle the bit sequence where TMS is a '1' with a single
             # '0' unless have reached the end of the bit sequence.
@@ -179,13 +179,13 @@ class PyFTDIAdapter(jtag):
             # otherwise, it is another segment where TMS is '0', so
             # skip to above.
             if (tms0Pos > head):
-                print('Bit Seqment with TMS as "0": ', tms_stream[head:tms0Pos], 'Head: {} TMS0Pos:{} TMS Pos: {}'.format(head, tms0Pos, tms_stream.pos))
+                print('Bit Seqment with TMS as "1": ', tms_stream[head:tms0Pos], 'Head: {} TMS0Pos:{} TMS Pos: {}'.format(head, tms0Pos, tms_stream.pos))
 
                 # Check the assumption that TDI does not change during this bit sequence where TMS is a '1'
                 if (self.verbosity_level >= 1):
                     if (tdi_stream[head:tms0Pos] != BitStream(int=0, length=(tms0Pos-head)) and
                         tdi_stream[head:tms0Pos] != BitStream(int=-1, length=(tms0Pos-head))):
-                        print('TDI bit sequence with TMS as "1" is not constant! TDI: ', tdi_stream[head:tms0Pos], ' TMS: ', tms_stream[head:tms0Pos])
+                        print('TDI Segment with TMS as "1" is not constant! TDI: ', tdi_stream[head:tms0Pos], ' TMS: ', tms_stream[head:tms0Pos])
                 
                 # Write out the TMS bits with TDI set to the final bit
                 # in the sequence. Since tms0Pos is the position of
