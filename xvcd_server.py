@@ -346,7 +346,7 @@ class xvcd_server(socketserver.BaseRequestHandler):
                     bpsList = [bps]
 
                 #@@@#print('>>>> bpsList: ', bpsList)
-                print('>>> send_data() time: {:.2f} - bps: {:.0f} - Avg. bps: {:.0f} <<<'.format(sendTime, bps, sum(bpsList)/len(bpsList)))
+                print('>>> send_data() time: {:.3f} - bps: {:.0f} - Avg. bps: {:.0f} <<<'.format(sendTime, bps, sum(bpsList)/len(bpsList)))
 
             if(self.server.opts.verbose >= 3):
                 print('TDO bitstream: {}'.format(TDO.bin))

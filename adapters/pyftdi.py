@@ -146,7 +146,7 @@ class PyFTDIAdapter(jtag):
             if (tms1Pos > head):
                 ## Handle TDI bits with TMS = '0'
                 #
-                if (self.verbosity_level >= 2):
+                if (self.verbosity_level >= 3):
                     print('Bit Segment with TMS as "0": ', tms_stream[head:tms1Pos], 'Head: {} TMS1Pos:{} TMS Pos: {}'.format(head, tms1Pos, tms_stream.pos))
 
                 # Write out the TDI bits with TMS set to '0'
@@ -186,7 +186,7 @@ class PyFTDIAdapter(jtag):
                 # this TMS as "1" segment is sent.
                 tail = min(tms0Pos,head+7)
 
-                if (self.verbosity_level >= 2):
+                if (self.verbosity_level >= 3):
                     print('Bit Seqment with TMS as "1": ', tms_stream[head:tail], 'Head: {} Tail: {} TMS0Pos:{} TMS Pos: {}'.format(head, tail, tms0Pos, tms_stream.pos))
 
                 # Check the assumption that TDI does not change during this bit sequence where TMS is a '1'
