@@ -39,7 +39,7 @@ class PapilioOne(PyFTDIGPIOAdapter):
 
     #VID/PID constants.
     VENDOR_ID  = 0x0403
-    PRODUCT_ID = 0x0610
+    PRODUCT_ID = 0x6010
    
     #Port-number constants.
     TCK_PORT = 0

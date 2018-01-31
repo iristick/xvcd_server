@@ -55,3 +55,4 @@ adapters/pyftdi.py~
 adapters/ft4232h_gpio.py~
 adapters/pyftdi_gpio.py~
 adapters/pyftdi_jtagc.py~
+adapters/ft2232h.py~

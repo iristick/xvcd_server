@@ -36,6 +36,19 @@ import logging
 #@@@#from pyftdi.bits import BitSequence
 from adapters.pyftdi_jtagc import JtagController, JtagError
 
+# INSTALLATION NOTE:
+#
+# To work on macOS, after install libusb and pyftdi, may have to
+# unload any existing FTDI drivers so they do not grab the device
+# before this code can. To do this:
+#
+#   sudo kextunload -bundle-id com.FTDI.driver.FTDIUSBSerialDriver
+#   sudo kextunload -bundle-id com.apple.driver.AppleUSBFTDI
+#
+# Can use kextload or rebotting to allow the drivers to work again -
+# this may impact any other FTDI devices that you want to run in VCOM
+# mode.
+
 class PyFTDIAdapter(jtag):
     """ 
         A JTAG adapter for FTDI-based devices based on the python PyFTDI library and using MPSSE mode.

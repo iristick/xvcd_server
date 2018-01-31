@@ -26,17 +26,17 @@ from adapters.pyftdi        import PyFTDIAdapter
 from adapters.pyftdi_jtagc  import JtagController, JtagError
 
 
-class FT4232H(PyFTDIAdapter):
+class FT2232H(PyFTDIAdapter):
     """ 
-        A JTAG adapter using a FTDI FT4232H-based interface in MPSSE mode.
+        A JTAG adapter using a FTDI FT2232H-based interface in MPSSE mode.
     """
 
     MAX_FREQ = 6.0e6
-    FTDI_URL = 'ftdi://ftdi:4232h/1'
+    FTDI_URL = 'ftdi://ftdi:2232h/1'
 
     def __init__(self):
         """
-            Create a new instance of the FT4232H.
+            Create a new instance of the FT2232H.
 
             @@@ Add ability to set which port to use
 
@@ -50,7 +50,6 @@ class FT4232H(PyFTDIAdapter):
 		
         # Open the PyFTDI URL configured for MPSSE JTAG
         self._jtag.configure(url)
-        #@@@#device.reset()
 		
         atexit.register(self.cleanup)
         
@@ -82,4 +81,4 @@ class FT4232H(PyFTDIAdapter):
         
 
 # General name of class for server
-jtag_adapter = FT4232H
+jtag_adapter = FT2232H
