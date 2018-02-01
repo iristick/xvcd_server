@@ -423,8 +423,8 @@ if(__name__ == '__main__'):
         
     #Print a helpful message indicating how to use the XVCD server.
     print("Starting XVCD server. In the relevant tool, use the following cable plugin command:\n")
-    print("If ISE (?):")
-    print(("    xilinx_xvc host={0}:{1}\n").format(HOST,opts.port))
+    print("If ISE iMPACT, Open Cable Plug-in with:")
+    print(("    xilinx_xvc host={0}:{1} disableversioncheck=true\n").format(HOST,opts.port))
     print("If Vivado, in the Tcl Console:")
     print( "    connect_hw_server")
     print(("    open_hw_target -xvc_url {0}:{1}\n").format(HOST,opts.port))
