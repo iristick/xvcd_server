@@ -58,7 +58,7 @@ RESET_CMD              = 0xff  # Cause a power-on reset.
 
 class jtag_xula(jtag):
 
-    def __init__(self):
+    def __init__(self, debug=False):
         super().__init__()
 
         buses = usb.busses()
@@ -97,14 +97,14 @@ class jtag_xula(jtag):
 
     @property
     def max_byte_sizes(self):
-        """Return the (TX, RX) tuple of maximum bytes to (write, read)
+        """Return the 3-tuple of maximum bytes from (TMS, TDI (output) and TDO (input))
 
-           :return: 2-tuple of write, read FIFO sizes in bytes
+           :return: 3-tuple of write, read buffer sizes in bytes
            :rtype: tuple(int, int)
         """
 
-        # This is limited by Python which is almost unlimited (I think), so set it to reasonable values
-        return (2048, 2048)
+        # This is limited by Python which is almost unlimited, so set it to reasonable values
+        return (2048, 2048, 2048)
 
     def send_data(self, TMS_stream, TDI_stream):
         TDO_stream = BitStream()
@@ -217,20 +217,3 @@ class jtag_xula(jtag):
 
 # General name of class for server
 jtag_adapter = jtag_xula
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        

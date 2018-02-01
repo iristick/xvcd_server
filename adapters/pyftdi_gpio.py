@@ -72,14 +72,14 @@ class PyFTDIGPIOAdapter(jtag):
 
     @property
     def max_byte_sizes(self):
-        """Return the (TX, RX) tuple of maximum bytes to (write, read)
+        """Return the 3-tuple of maximum bytes from (TMS, TDI (output) and TDO (input))
 
-           :return: 2-tuple of write, read FIFO sizes in bytes
+           :return: 3-tuple of write, read buffer sizes in bytes
            :rtype: tuple(int, int)
         """
 
         # This is limited by Python which is almost unlimited, so set it to reasonable values
-        return (2048, 2048)
+        return (2048, 2048, 2048)
 
     #def jtag_general(self, tms_stream, tdi_stream):
     def send_data(self, tms_stream, tdi_stream):

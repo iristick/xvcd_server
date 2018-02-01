@@ -50,7 +50,7 @@ class PapilioOne(PyFTDIGPIOAdapter):
     DEFAULT_FREQ = int(1e6)
     FTDI_URL = 'ftdi://0x{:04x}:0x{:04x}/1'.format(VENDOR_ID, PRODUCT_ID)
 
-    def __init__(self, serial_number=None):
+    def __init__(self, serial_number=None, debug=False):
         """
             Create a new instance of the Papilio One.
 

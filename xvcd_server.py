@@ -165,7 +165,14 @@ class xvcd_server(socketserver.BaseRequestHandler):
                     data = self.sread(6)
 
                     if (data == b'tinfo:'):
-                        XVC_INFO = "xvcServer_v{:.1f}:{}\n".format(XVC_VERSION, min(self.server.jtag.max_byte_sizes)) 
+                        ## The xvc_vector_len that is returned for the
+                        ## getinfo: message is not well documented. It
+                        ## appears to be the maximum TMS+TDI vector
+                        ## length in bytes that is allowed. Keep in
+                        ## mind that the returned TDO vector will have
+                        ## a maximum of 2x xvc_vector_len. Therefore,
+                        ## return the minimum of TMS+TDI or TDO*2
+                        XVC_INFO = "xvcServer_v{:.1f}:{}\n".format(XVC_VERSION, min((self.server.jtag.max_byte_sizes[0]+self.server.jtag.max_byte_sizes[1]),(self.server.jtag.max_byte_sizes[2]*2))) 
                         if(self.server.opts.verbose >= 1):
                             print('CMD=getinfo - Response: {}'.format(XVC_INFO))
                             self.request.sendall(XVC_INFO.encode())
@@ -358,7 +365,7 @@ class xvcd_server(socketserver.BaseRequestHandler):
 
                 # Return the TDO vector as response to "shift:" message
                 # and continue to top of loop.
-                self.request.sendall(TDO.tobytes())
+                self.request.sendall(TDO.bytes)
 
         except KeyboardInterrupt:
             print("\nExiting Xilinx Virtual Cable Driver Server\n")            
@@ -390,6 +397,7 @@ if(__name__ == '__main__'):
     parser.add_argument('adapter', help='Select which JTAG adapter to use')
     parser.add_argument('--port', default=2542, type=int)
     parser.add_argument('--verbose', '-v', action='count', default=0, help='Increase verbosity level')
+    parser.add_argument('--debug', '-d', action='store_true', help='Enable debug output')
     parser.add_argument('--local', '-l', action='store_true', help='Use to bind to local HOST typically when running on same computer as Xilinx tools')
 
     opts = parser.parse_args()
@@ -401,7 +409,7 @@ if(__name__ == '__main__'):
         print('Adapter {} failed to load. Exiting...'.format(opts.adapter))
         exit()
 
-    jtag = mod.jtag_adapter()
+    jtag = mod.jtag_adapter(opts.debug)
     jtag.set_verbosity(opts.verbose)
 
     if(opts.reset):

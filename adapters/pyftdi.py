@@ -21,20 +21,8 @@
 #
 #------------------------------------------------------------------------------
 
-#@@@#import bitstring
 from bitstring import BitStream
 from adapters.jtag import jtag
-
-#@@@#import usb
-#@@@#import sys
-#@@@#import struct
-#@@@#import time
-
-import logging
-#@@@#from os import environ
-#@@@#from pyftdi.jtag import JtagController, JtagError
-#@@@#from pyftdi.bits import BitSequence
-from adapters.pyftdi_jtagc import JtagController, JtagError
 
 # INSTALLATION NOTE:
 #
@@ -101,9 +89,9 @@ class PyFTDIAdapter(jtag):
 
     @property
     def max_byte_sizes(self):
-        """Return the (TX, RX) tuple of maximum bytes to (write, read)
+        """Return the 3-tuple of maximum bytes from (TMS, TDI (output) and TDO (input))
 
-           :return: 2-tuple of write, read FIFO sizes in bytes
+           :return: 3-tuple of write, read buffer sizes in bytes
            :rtype: tuple(int, int)
         """
         return self.device.max_byte_sizes
@@ -181,7 +169,7 @@ class PyFTDIAdapter(jtag):
             if (tms1Pos > head):
                 ## Handle TDI bits with TMS = '0'
                 #
-                if (self.verbosity_level >= 3):
+                if (self.verbosity_level >= 4):
                     print('Bit Segment with TMS as "0": ', tms_stream[head:tms1Pos], 'Head: {} TMS1Pos:{} TMS Pos: {}'.format(head, tms1Pos, tms_stream.pos))
 
                 # Write out the TDI bits with TMS set to '0'
@@ -221,8 +209,8 @@ class PyFTDIAdapter(jtag):
                 # this TMS as "1" segment is sent.
                 tail = min(tms0Pos,head+7)
 
-                if (self.verbosity_level >= 3):
-                    print('Bit Seqment with TMS as "1": ', tms_stream[head:tail], 'Head: {} Tail: {} TMS0Pos:{} TMS Pos: {}'.format(head, tail, tms0Pos, tms_stream.pos))
+                if (self.verbosity_level >= 4):
+                    print('Bit Segment with TMS as "1": ', tms_stream[head:tail], 'Head: {} Tail: {} TMS0Pos:{} TMS Pos: {}'.format(head, tail, tms0Pos, tms_stream.pos))
 
                 # Check the assumption that TDI does not change during this bit sequence where TMS is a '1'
                 if (self.verbosity_level >= 3):
