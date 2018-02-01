@@ -15,7 +15,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #------------------------------------------------------------------------------
 
-import logging
 from os import environ
 import atexit
 
@@ -34,7 +33,7 @@ class FT2232H(PyFTDIAdapter):
     MAX_FREQ = 6.0e6
     FTDI_URL = 'ftdi://ftdi:2232h/1'
 
-    def __init__(self):
+    def __init__(self, debug=False):
         """
             Create a new instance of the FT2232H.
 
@@ -43,13 +42,14 @@ class FT2232H(PyFTDIAdapter):
         """
 
         ## Getting USB Timeout errors, try 10000 ms for both
-        self._jtag = JtagController(trst=False, frequency=self.MAX_FREQ, usb_read_timeout=10000, usb_write_timeout=10000)
+        self._jtag = JtagController(trst=False, frequency=self.MAX_FREQ, debug=debug, usb_read_timeout=10000, usb_write_timeout=10000)
 		
         # If FTDI_DEVICE environment variable, use it instead of self.FTDI_URL
         url = environ.get('FTDI_DEVICE', self.FTDI_URL)
 		
         # Open the PyFTDI URL configured for MPSSE JTAG
         self._jtag.configure(url)
+        #@@@#device.reset()
 		
         atexit.register(self.cleanup)
         
