@@ -229,8 +229,18 @@ class JtagController:
             raise JtagError('Not all data read! Expected {} bytes but only read {} bytes'.format(1,len(data)))
 
         tdo = BitStream(data)
-        tdo.reverse()      # return to bitstring bit ordering with left-most bit the lsb
-        tdo = tdo[:length] # only pass back the same number of bits as clocked out
+
+        # FTDI handles returned LSB bit data by putting the first bit
+        # in bit 7 and shifting to the right with every new bit. So
+        # the first bit clocked will be in the lowest bit number, but
+        # which bit number it will be in depends on how many bits
+        # clocked. [It is kinda stupid, if you ask me. I think the bit
+        # order should be the same as tehe bit written, but they
+        # aren't.]
+        tdo = tdo[:length]
+        
+        # return to bitstring bit ordering with left-most bit the lsb
+        tdo.reverse()
         return tdo
 
     def write_tdi_read_tdo(self, out, use_last=False):
@@ -285,7 +295,12 @@ class JtagController:
             raise JtagError('Not all data read! Expected {} bytes but only read {} bytes'.format(1,len(data)))
 
         tdo = BitStream(data)
-        tdo = tdo[:length] # only pass back the same number of bits as clocked out
+
+        # Only pass back the same number of bits as clocked
+        # out. Although MSB, a MSB bit read left shifts the bits
+        # starting at bit 0. So it is right shifted MSB from reads by
+        # left shifted MSB on bit writes. (Go Fugure?)
+        tdo = tdo[8-length:]
         return tdo
 
     def _write_read_bytes(self, out):
