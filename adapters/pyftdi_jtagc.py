@@ -54,7 +54,7 @@ from pyftdi.ftdi import Ftdi
 from pyftdi import FtdiLogger
 import logging
 
-from bitstring import BitStream, BitArray
+from bitstring import BitStream, BitArray, Bits
 
 class JtagError(Exception):
     """Generic JTAG error"""
@@ -91,6 +91,11 @@ class JtagController:
                           JtagController.TDI_BIT |
                           JtagController.TMS_BIT |
                           (self._trst and JtagController.TRST_BIT or 0))
+        # all JTAG outputs are low - Additionally, setting this upper
+        # bits as outputs and then having a specific initial value
+        # gets the PYNQ-Z1 board working
+        self.direction |= 0x90
+        self.initialout = 0xe0  
         self._last = None  # Last deferred TDO bit
         self._write_buff = array('B')
         self._debug = debug
@@ -109,14 +114,15 @@ class JtagController:
             except AttributeError:
                 raise ValueError('Invalid log level: %s', level)
             FtdiLogger.set_level(loglevel)
-    
-        
+
+        print('Opening MPSSE:  direction ("1" is out): 0x{:02x}  Initial Output: 0x{:02x}'.format(self.direction, self.initialout))
+            
         self._ftdi.open_mpsse_from_url(
             url, direction=self.direction, frequency=self._frequency, debug=self._debug)
         self._ftdi_opened = True
 
         # FTDI requires to initialize all GPIOs before MPSSE kicks in
-        cmd = array('B', (Ftdi.SET_BITS_LOW, 0x0, self.direction))
+        cmd = array('B', (Ftdi.SET_BITS_LOW, self.initialout, self.direction))
         self._ftdi.write_data(cmd)
 
         # Read the FIFO sizes and save them
@@ -195,8 +201,8 @@ class JtagController:
 
     def write_tms_tdi_read_tdo(self, tms, tdi):
         """Write out TMS bits while holding TDI constant and reading back in TDO"""
-        if not isinstance(tms, BitStream):
-            raise JtagError('Expect a BitStream')
+        if not (isinstance(tms, BitStream) or isinstance(tms, BitArray)):
+            raise JtagError('Expect a BitStream or BitArray')
         length = len(tms)
         if not (0 < length < 8):
             raise JtagError('Invalid TMS length')
@@ -228,7 +234,7 @@ class JtagController:
         if (len(data) != 1):
             raise JtagError('Not all data read! Expected {} bytes but only read {} bytes'.format(1,len(data)))
 
-        tdo = BitStream(data)
+        tdo = BitArray(data)
 
         # FTDI handles returned LSB bit data by putting the first bit
         # in bit 7 and shifting to the right with every new bit. So
@@ -244,10 +250,10 @@ class JtagController:
         return tdo
 
     def write_tdi_read_tdo(self, out, use_last=False):
-        """ Output a sequence of bits to TDI while reading the TDO input bits """
+        """ Output a sequence of bits to TDI while reading the TDO input bits. Automatically break any byte writes based on adapter FIFO sizes. """
 
-        if not isinstance(out, BitStream):
-            raise JtagError('Expect a BitStream')
+        if not (isinstance(out, BitStream) or isinstance(out, BitArray)):
+            raise JtagError('Expect a BitStream or BitArray')
 
         ## @@@ Not used at the moment
         #if use_last:
@@ -259,11 +265,28 @@ class JtagController:
         bit_count = out.len-pos
 
         # Separate into BYTE and BIT commands
-        tdo = BitStream()
+        tdo = BitArray()
         if byte_count:
-            tdo += self._write_read_bytes(out[:pos])
+            ## Since TDO bit length will be equal to TDI bit length,
+            ## set max_rw_bits to the minimum of the TDI or TDO bit
+            ## sizes.
+            max_rw_bits = min(self.max_byte_sizes[1:3])*8
+
+            # Start head and tail at the beginning bit index
+            head = 0
+            tail = 0
+
+            #@@@while(tdo.len//8 < byte_count):
+            while(head < pos):
+                # Set tail to either be the maximum bytes to
+                # read/write or the final bit, pos, whichever is
+                # smaller. These are bit indexes.
+                tail = min((head+max_rw_bits),pos)
+                tdo += self._write_read_bytes(out[head:tail])
+                head = tail
 
         if bit_count:
+            # Do not have to deal with bit length here because already know bit_count is b/w 0 and 7
             tdo += self._write_read_bits(out[pos:])
 
         return tdo
@@ -294,7 +317,7 @@ class JtagController:
         if (len(data) != 1):
             raise JtagError('Not all data read! Expected {} bytes but only read {} bytes'.format(1,len(data)))
 
-        tdo = BitStream(data)
+        tdo = BitArray(data)
 
         # Only pass back the same number of bits as clocked
         # out. Although MSB, a MSB bit read left shifts the bits
@@ -348,6 +371,6 @@ class JtagController:
         #print("READ {} BYTES:  0x{}".format(len(data), data.tobytes().hex()))
         #print("READ {} BYTES".format(len(data)))
 
-        return BitStream(data)
+        return BitArray(data)
 
 

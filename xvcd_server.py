@@ -172,7 +172,7 @@ class xvcd_server(socketserver.BaseRequestHandler):
                         ## mind that the returned TDO vector will have
                         ## a maximum of 2x xvc_vector_len. Therefore,
                         ## return the minimum of TMS+TDI or TDO*2
-                        XVC_INFO = "xvcServer_v{:.1f}:{}\n".format(XVC_VERSION, min((self.server.jtag.max_byte_sizes[0]+self.server.jtag.max_byte_sizes[1]),(self.server.jtag.max_byte_sizes[2]*2))) 
+                        XVC_INFO = "xvcServer_v{:.1f}:{}\n".format(XVC_VERSION, self.server.jtag.xvc_vector_len)
                         if(self.server.opts.verbose >= 1):
                             print('CMD=getinfo - Response: {}'.format(XVC_INFO))
                             self.request.sendall(XVC_INFO.encode())

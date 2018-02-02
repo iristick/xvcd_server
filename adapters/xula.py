@@ -106,6 +106,16 @@ class jtag_xula(jtag):
         # This is limited by Python which is almost unlimited, so set it to reasonable values
         return (2048, 2048, 2048)
 
+    @property
+    def xvc_vector_len(self):
+        """Return the recommended vector length. This appears to be a byte length that includes both the TMS and TDI vectors
+
+           :return: integer that the the maximum xvc_vector_len to report back to Vivado
+           :rtype: int
+        """
+        return 4096
+
+    
     def send_data(self, TMS_stream, TDI_stream):
         TDO_stream = BitStream()
 

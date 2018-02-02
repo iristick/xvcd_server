@@ -21,7 +21,7 @@
 #
 #------------------------------------------------------------------------------
 
-from bitstring import BitStream
+from bitstring import BitStream, BitArray, Bits
 from adapters.jtag import jtag
 
 # INSTALLATION NOTE:
@@ -56,7 +56,7 @@ class PyFTDIAdapter(jtag):
         self.device = device
 
         #Create a copy of the instruction register for this device.
-        #self.ir = bitstring.BitStream('0b000000')
+        #self.ir = Bits('0b000000')
 
     def set_verbosity(self, level):
         """
@@ -96,7 +96,15 @@ class PyFTDIAdapter(jtag):
         """
         return self.device.max_byte_sizes
 
-    
+    @property
+    def xvc_vector_len(self):
+        """Return the recommended vector length. This appears to be a byte length that includes both the TMS and TDI vectors
+
+           :return: integer that the the maximum xvc_vector_len to report back to Vivado
+           :rtype: int
+        """
+        return 8100
+
     def send_data(self, tms_stream, tdi_stream):
         """
             Performs a general-purpose JTAG communication.
@@ -104,9 +112,18 @@ class PyFTDIAdapter(jtag):
             tms_stream -- The values to be transmitted over the Test Mode Select (TMS) line.
             tdi_stream -- The values to be transmitted to the target device.
         """
-        
+
+        ## Check data sizes first
+        #@@@ if (tms_stream.len > self.max_byte_sizes[0]):
+        #@@@    raise ValueError('TMS bit stream size ({}) is too big for JTAG adapter (max: {})'.format(tms_stream.len,self.max_byte_sizes[0]))
+
+        ## Check TDI size against both TDI and TDO buffer sizes since the TDO stream size will equal the TDI input stream size.
+        #@@@if (tdi_stream.len > min(self.max_byte_sizes[1:3])):
+        #@@@    raise ValueError('TDI bit stream size ({}) is too big for JTAG adapter (max: {})'.format(tms_stream.len,min(self.max_byte_sizes[1:3])))
+ 
+            
         #Create a new bitstream object to store the result of the transmission.
-        tdo_stream = BitStream()
+        tdo_stream = BitArray()
 
         # Although the PyFTDI MPSSE mode is expected to be a
         # significant performance improvement over GPIO mode, it does
@@ -209,13 +226,33 @@ class PyFTDIAdapter(jtag):
                 # this TMS as "1" segment is sent.
                 tail = min(tms0Pos,head+7)
 
+                #@@@if (self.verbosity_level >= 1):
+                #    if (tdi_stream[head:tail] != Bits(int=0, length=(tail-head)) and
+                #        tdi_stream[head:tail] != Bits(int=-1, length=(tail-head))):
+                #        print('^^^ TDI Segment with TMS as "1" is not constant! TDI: ', tdi_stream[head:tail], ' TMS: ', tms_stream[head:tail])
+
+                # If TDI is not constant during this TMS is '1'
+                # segment, then break it up further so can send a
+                # static TDI.
+                #
+                # Find position of the next bit where TDI changes
+                tdiFind = tdi_stream.find(Bits(bool=not tdi_stream[head]), start=head, end=tail)
+                if tdiFind:
+                    # If TDI changed during this segment, then break
+                    # up the segment so that TDI does not change with
+                    # each write_tms_tdi_read_tdo() call
+                    tail = tdiFind[0]
+
                 if (self.verbosity_level >= 4):
                     print('Bit Segment with TMS as "1": ', tms_stream[head:tail], 'Head: {} Tail: {} TMS0Pos:{} TMS Pos: {}'.format(head, tail, tms0Pos, tms_stream.pos))
 
-                # Check the assumption that TDI does not change during this bit sequence where TMS is a '1'
+                # Check the assumption that TDI does not change during
+                # this bit sequence where TMS is a '1'. It should not
+                # since it is now checked above with find of
+                # tdi_stream
                 if (self.verbosity_level >= 3):
-                    if (tdi_stream[head:tail] != BitStream(int=0, length=(tail-head)) and
-                        tdi_stream[head:tail] != BitStream(int=-1, length=(tail-head))):
+                    if (tdi_stream[head:tail] != Bits(int=0, length=(tail-head)) and
+                        tdi_stream[head:tail] != Bits(int=-1, length=(tail-head))):
                         print('TDI Segment with TMS as "1" is not constant! TDI: ', tdi_stream[head:tail], ' TMS: ', tms_stream[head:tail])
                 
                 # Write out the TMS bits with TDI set to the final bit
@@ -231,7 +268,7 @@ class PyFTDIAdapter(jtag):
         #... return the values returned over TDO.
         return tdo_stream
 
-
+    
     def set_program(self, value):
         """
             Set the value of the program pin. This will need to be designed on
