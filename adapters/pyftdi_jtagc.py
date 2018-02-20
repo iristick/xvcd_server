@@ -52,6 +52,7 @@ from sys import modules, stdout
 from array import array
 from pyftdi.ftdi import Ftdi
 from pyftdi import FtdiLogger
+from threading import Lock
 import logging
 
 from bitstring import BitStream, BitArray, Bits
@@ -83,10 +84,12 @@ class JtagController:
           controller
         """
         self._ftdi = Ftdi()
+        self._lock = Lock()
         self._ftdi.timeouts = (usb_read_timeout, usb_write_timeout)
         self._trst = trst
         self._frequency = frequency
         self._ftdi_opened = False
+        self._immediate = bytes((Ftdi.SEND_IMMEDIATE,))
         self.direction = (JtagController.TCK_BIT |
                           JtagController.TDI_BIT |
                           JtagController.TMS_BIT |
@@ -96,6 +99,7 @@ class JtagController:
         # gets the PYNQ-Z1 board working
         self.direction |= 0x90
         self.initialout = 0xe0  
+        #@@@#self.initialout = self.direction
         self._last = None  # Last deferred TDO bit
         self._write_buff = array('B')
         self._debug = debug
@@ -116,32 +120,33 @@ class JtagController:
             FtdiLogger.set_level(loglevel)
 
         print('Opening MPSSE:  direction ("1" is out): 0x{:02x}  Initial Output: 0x{:02x}'.format(self.direction, self.initialout))
-            
-        self._ftdi.open_mpsse_from_url(
-            url, direction=self.direction, frequency=self._frequency, debug=self._debug)
-        self._ftdi_opened = True
 
-        # FTDI requires to initialize all GPIOs before MPSSE kicks in
-        cmd = array('B', (Ftdi.SET_BITS_LOW, self.initialout, self.direction))
-        self._ftdi.write_data(cmd)
+        with self._lock:
+            self._ftdi.open_mpsse_from_url(
+                url, direction=self.direction, frequency=self._frequency, debug=self._debug, latency=12) # @@@@@
+            self._ftdi_opened = True
 
-        # Read the FIFO sizes and save them
-        (self.FTDI_WRITE_PIPE_LEN, self.FTDI_READ_PIPE_LEN) = self._ftdi.fifo_sizes
+            # FTDI requires to initialize all GPIOs before MPSSE kicks in
+            cmd = array('B', (Ftdi.SET_BITS_LOW, self.initialout, self.direction))
+            self._ftdi.write_data(cmd)
 
-        # Set the FTDI read/write chunksizes to be the same as the FTDI FIFO lengths
-        self._ftdi.write_data_set_chunksize(self.FTDI_WRITE_PIPE_LEN)
-        self._ftdi.read_data_set_chunksize(self.FTDI_READ_PIPE_LEN)
+            # Read the FIFO sizes and save them
+            (self.FTDI_WRITE_PIPE_LEN, self.FTDI_READ_PIPE_LEN) = self._ftdi.fifo_sizes
 
-        # "-3" on self.FTDI_WRITE_PIPE_LEN accounts for the command
-        # byte plus 2 length bytes which must also fit in the WRITE
-        # FIFO.
-        self.FTDI_WR_BUFFER_MAX_LEN = self.FTDI_WRITE_PIPE_LEN-3
+            # Set the FTDI read/write chunksizes to be the same as the FTDI FIFO lengths
+            self._ftdi.write_data_set_chunksize(self.FTDI_WRITE_PIPE_LEN)
+            self._ftdi.read_data_set_chunksize(self.FTDI_READ_PIPE_LEN)
 
-        # "-2" on self.FTDI_READ_PIPE_LEN accounts for the two status
-        # bytes, even though they are not returned by the FTDI
-        # read_bytes function. They are still taking up space in the
-        # FTDI's READ FIFO.
-        self.FTDI_RD_BUFFER_MAX_LEN = self.FTDI_READ_PIPE_LEN-2
+            # "-3" on self.FTDI_WRITE_PIPE_LEN accounts for the command
+            # byte plus 2 length bytes which must also fit in the WRITE
+            # FIFO.
+            self.FTDI_WR_BUFFER_MAX_LEN = self.FTDI_WRITE_PIPE_LEN-3
+
+            # "-2" on self.FTDI_READ_PIPE_LEN accounts for the two status
+            # bytes, even though they are not returned by the FTDI
+            # read_bytes function. They are still taking up space in the
+            # FTDI's READ FIFO.
+            self.FTDI_RD_BUFFER_MAX_LEN = self.FTDI_READ_PIPE_LEN-2
 
 
     def close(self):
@@ -180,8 +185,10 @@ class JtagController:
             raise JtagError("FTDI controller terminated")
         if self._write_buff:
             try:
-                self._ftdi.write_data(self._write_buff)
-                self._write_buff = array('B')
+                with self._lock:
+                    self._write_buff.extend(self._immediate)
+                    self._ftdi.write_data(self._write_buff)
+                    self._write_buff = array('B')
             except usb.core.USBError:
                 pass            # FTDI should be catching the error
 
